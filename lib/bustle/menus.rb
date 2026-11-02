@@ -16,21 +16,37 @@ module Bustle
   #
   # Statistics is a stateful action because the sidebar toggles, which is what
   # upstream's GtkCheckMenuItem was for.
+  #
+  # The accelerators are upstream's, down to which widget carries them:
+  # Ctrl+S belongs to headerSave (data/bustle.ui:335) and headerExport has
+  # none at all, so Save keeps Ctrl+S here too. The three recording
+  # accelerators are the ones recordMenu's items advertise.
   class Menus
     # action name => accelerators, as upstream's menu items advertise them.
     WINDOW_ACTIONS = {
-      "open"       => ["<Control>o"],
-      "open-pair"  => [],
-      "filter"     => ["<Control>f"],
-      "export-pdf" => ["<Control>s"],
-      "about"      => [],
+      "open"           => ["<Control>o"],
+      "open-pair"      => [],
+      "record-session" => ["<Control>e"],
+      "record-system"  => ["<Control>y"],
+      "record-address" => ["<Control>a"],
+      "save"           => ["<Control>s"],
+      "filter"         => ["<Control>f"],
+      "export-pdf"     => [],
+      "about"          => [],
     }.freeze
+
+    SAVE_ACTION = "save"
 
     STATISTICS_ACTION = "statistics"
     STATISTICS_ACCELS = ["F9"].freeze
 
     # The actions that need a log open before they mean anything.
     NEEDS_LOG = [STATISTICS_ACTION, "filter", "export-pdf"].freeze
+
+    # Saving only means something for a recording that has not been saved
+    # yet, which is why upstream's headerSave starts insensitive and is only
+    # ever switched on by finishedRecording.
+    NEEDS_RECORDING = [SAVE_ACTION].freeze
 
     def initialize(app:, window:, handlers:)
       @app = app
@@ -42,7 +58,7 @@ module Bustle
     def install
       WINDOW_ACTIONS.each { |name, accels| add_action(name, accels) }
       add_statistics_action
-      NEEDS_LOG.each { |name| set_enabled(name, false) }
+      (NEEDS_LOG + NEEDS_RECORDING).each { |name| set_enabled(name, false) }
       self
     end
 
@@ -51,6 +67,15 @@ module Bustle
     end
 
     def statistics_active? = @actions[STATISTICS_ACTION]&.state&.value == true
+
+    # Upstream's recordMenu, hung off the Record button.
+    def record_menu
+      @record_menu ||= Gio::Menu.new.tap do |menu|
+        menu.append(Bustle._("Record S_ession Bus"), "win.record-session")
+        menu.append(Bustle._("Record S_ystem Bus"), "win.record-system")
+        menu.append(Bustle._("Record _Address…"), "win.record-address")
+      end
+    end
 
     def open_menu
       @open_menu ||= Gio::Menu.new.tap do |menu|

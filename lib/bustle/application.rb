@@ -51,6 +51,27 @@ module Bustle
     # The windows this run has opened, in the order they were opened.
     def windows = @windows ||= []
 
+    # Upstream's consumeInitialWindow: the window an Open or a Record should
+    # load into. A fresh app opens one empty window and remembers it here; a
+    # command line whose log would not load leaves that window remembered too,
+    # so the error bar stays visible until something replaces it. Once it has
+    # been used it is forgotten, and the next Open gets a window of its own.
+    def consume_initial_window
+      @initial_window.then do |remembered|
+        @initial_window = nil
+        if remembered&.empty?
+          remembered
+        else
+          open_window(nil)
+        end
+      end
+    end
+
+    # Upstream's putInitialWindow.
+    def put_initial_window(window)
+      @initial_window = window
+    end
+
     private
 
       # One window per log named on the command line, or one window with
@@ -66,10 +87,12 @@ module Bustle
       end
 
       def open_window(details)
-        Window.new(app:, show_bounds: @show_bounds).tap do |window|
+        Window.new(app:, show_bounds: @show_bounds, windows: self).tap do |window|
           window.build
           if details
             window.load(details)
+          else
+            put_initial_window(window)
           end
           if @present
             window.present

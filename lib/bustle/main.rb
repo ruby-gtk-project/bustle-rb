@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "application"
 require_relative "noninteractive"
 require_relative "translation"
 
@@ -93,7 +92,10 @@ module Bustle
         end
       end
 
+      # The widgets are required here and nowhere else, so the batch modes
+      # and `require "bustle"` never load GTK, Libadwaita or Cairo.
       def launch(logs, pair)
+        require_relative "application"
         Application.new(logs:, pair:, show_bounds: debug?).build.run
         0
       end

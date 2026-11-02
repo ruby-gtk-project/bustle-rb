@@ -43,7 +43,7 @@ module Bustle
       def instructions
         Bustle._(
           "Start recording D-Bus activity with the <b>Record</b> button above\n" \
-          "You can also run <i>dbus-monitor --pcap</i> from the command line",
+          " You can also run <i>dbus-monitor --pcap</i> from the command line",
         )
       end
   end

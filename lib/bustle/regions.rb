@@ -71,6 +71,21 @@ module Bustle
 
       def flatten = before.reverse + [current].compact + after
 
+      # Upstream derives Eq for RegionSelection, and its test suite compares
+      # whole selections (prop_Append, prop_FlattenThenNewIsIdempotent), so
+      # two selections holding the same regions in the same places are equal.
+      def ==(other)
+        other.is_a?(RegionSelection) &&
+          other.before == before &&
+          other.last_click == last_click &&
+          other.current == current &&
+          other.after == after
+      end
+
+      alias eql? ==
+
+      def hash = [before, last_click, current, after].hash
+
       def with(before: @before, last_click: @last_click, current: @current, after: @after)
         self.class.new(before:, last_click:, current:, after:)
       end

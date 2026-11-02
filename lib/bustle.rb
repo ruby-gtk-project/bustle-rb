@@ -2,11 +2,19 @@
 
 require_relative "bustle/rb/version"
 
-# The model and the backends, which have no widgets in them and can be used
-# on their own: load a log, render it, analyse it.
+# The model and the backends: load a log, analyse it, print it. Nothing
+# required from here pulls in GTK, Libadwaita or Cairo, so `require "bustle"`
+# works — and `bustle --count LOGFILE` runs — on a machine with no display and
+# no gtk4 gem installed. Upstream's Bustle/Noninteractive.hs imports no GTK
+# module either.
+#
+# The widgets, the renderer and the diagram they draw are deliberately absent.
+# They are reached through `bustle/main`, which requires `bustle/application`
+# only on the interactive path, and each widget file requires its own
+# siblings, so the interactive half loads as one piece and the batch half
+# never touches it.
 require_relative "bustle/translation"
 require_relative "bustle/util"
-require_relative "bustle/missing"
 require_relative "bustle/types"
 require_relative "bustle/marquee"
 require_relative "bustle/variant_formatter"
@@ -15,23 +23,4 @@ require_relative "bustle/stats"
 require_relative "bustle/pcap_loader"
 require_relative "bustle/loader"
 require_relative "bustle/noninteractive"
-
-# The widgets, which need GTK and Libadwaita.
-require_relative "bustle/diagram"
-require_relative "bustle/renderer"
-require_relative "bustle/canvas"
-require_relative "bustle/details_view"
-require_relative "bustle/statistics_pane"
-require_relative "bustle/welcome_page"
-require_relative "bustle/please_hold_page"
-require_relative "bustle/error_bar"
-require_relative "bustle/menus"
-require_relative "bustle/header_bar"
-require_relative "bustle/about_dialog"
-require_relative "bustle/open_dialog"
-require_relative "bustle/open_two_dialog"
-require_relative "bustle/filter_dialog"
-require_relative "bustle/pdf_export"
-require_relative "bustle/window"
-require_relative "bustle/application"
 require_relative "bustle/main"

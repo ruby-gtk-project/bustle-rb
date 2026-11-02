@@ -19,16 +19,53 @@ module Bustle
   # The frequency column really is a progress bar, as upstream's is, scaled
   # against the busiest member in the log and never quite empty so that a
   # member seen once still shows something.
+  #
+  # Every cell upstream renders is 7 points (`cellTextSizePoints := 7` in all
+  # three of its addTextRenderer/addMemberRenderer helpers), which is what
+  # makes a 30-character ellipsised member name fit beside four numeric
+  # columns in a sidebar narrow enough to leave room for the diagram. A GTK4
+  # column view has no equivalent property, so the same thing is said in CSS
+  # against a class on the three views.
   class StatisticsPane
     FREQUENCIES_PAGE = "frequencies"
     DURATIONS_PAGE = "durations"
     SIZES_PAGE = "sizes"
 
+    TABLE_CSS_CLASS = "bustle-statistics"
+    TABLE_POINT_SIZE = 7
+
+    CSS = <<~CSS
+      columnview.#{TABLE_CSS_CLASS},
+      columnview.#{TABLE_CSS_CLASS} > header > button {
+        font-size: #{TABLE_POINT_SIZE}pt;
+      }
+    CSS
+
     MINIMUM_BAR = 2
     BAR_RANGE = 98
     MEMBER_WIDTH_CHARS = 30
 
+    class << self
+      # One provider for the whole display, added once however many windows
+      # ask for it.
+      def install_css
+        unless @installed
+          @installed = true
+          Gtk::StyleContext.add_provider_for_display(
+            Gdk::Display.default,
+            css_provider,
+            Gtk::StyleProvider::PRIORITY_APPLICATION,
+          )
+        end
+      end
+
+      def css_provider
+        @css_provider ||= Gtk::CssProvider.new.tap { |provider| provider.load(data: CSS) }
+      end
+    end
+
     def build
+      StatisticsPane.install_css
       stack.tap do |pages|
         pages.add_titled(frequency_scroller, FREQUENCIES_PAGE, Bustle._("Frequencies"))
         pages.add_titled(duration_scroller, DURATIONS_PAGE, Bustle._("Durations"))
@@ -167,6 +204,7 @@ module Bustle
         Gtk::ColumnView.new(Gtk::NoSelection.new(store)).tap do |view|
           view.show_column_separators = true
           view.add_css_class("data-table")
+          view.add_css_class(TABLE_CSS_CLASS)
         end
       end
 

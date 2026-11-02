@@ -52,7 +52,7 @@ module Bustle
         render(path, width, height)
         @on_success&.call(path)
       rescue SystemCallError, IOError, Cairo::Error => e
-        @on_error&.call(format(Bustle._("Couldn't export log as PDF: %s"), e.message))
+        @on_error&.call("#{Bustle._("Couldn't export log as PDF: ")}#{e.message}")
       end
 
       def render(path, width, height)

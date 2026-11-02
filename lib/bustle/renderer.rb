@@ -112,6 +112,17 @@ module Bustle
         )
       end
 
+      # Upstream's Participants is a Map, so it has structural equality, and
+      # its test suite compares one rendering's participants against
+      # another's.
+      def ==(other)
+        other.is_a?(Participants) && other.session == session && other.system == system
+      end
+
+      alias eql? ==
+
+      def hash = [session, system].hash
+
       private
 
         def merge_maps(one, other)

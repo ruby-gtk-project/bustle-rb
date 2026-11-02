@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2014 Philip Withnall <philip@tecnocode.co.uk> -->
+<!-- Copyright 2016–2018 Will Thompson <will@willthompson.co.uk> -->
+<!-- Ported from upstream's data/org.freedesktop.Bustle.appdata.xml.in -->
+<component type="desktop-application">
+	<id>org.rubygtkproject.Bustle</id>
+	<launchable type="desktop-id">org.rubygtkproject.Bustle.desktop</launchable>
+	<metadata_license>CC-BY-SA-3.0</metadata_license>
+	<name>Bustle</name>
+	<summary>Draw sequence diagrams of D-Bus activity</summary>
+	<description>
+		<!-- Translators: These are the application description paragraphs in the AppData file. -->
+		<p>Bustle draws sequence diagrams of D-Bus activity.
+		    It shows signal emissions, method calls and their
+		    corresponding returns, with time stamps for each individual
+		    event and the duration of each method call. This can help
+		    you check for unwanted D-Bus traffic, and pinpoint why your
+		    D-Bus-based application is not performing as well as you
+		    like. It also provides statistics like signal frequencies
+		    and average method call times.</p>
+		<p>This is the Ruby GTK4 and Libadwaita port of Bustle.</p>
+	</description>
+	<project_license>LGPL-2.1+ AND GPL-3.0</project_license>
+	<screenshots>
+		<screenshot width="1548" height="848" type="default">
+			<image>https://gitlab.freedesktop.org/bustle/bustle/raw/master/data/appdata/bustle-diagram.png</image>
+			<caption>Explore sequence diagrams of D-Bus activity</caption>
+		</screenshot>
+		<screenshot width="1548" height="848">
+			<image>https://gitlab.freedesktop.org/bustle/bustle/raw/master/data/appdata/bustle-statistics.png</image>
+			<caption>See statistics summarizing the log</caption>
+		</screenshot>
+		<screenshot width="1548" height="848">
+			<image>https://gitlab.freedesktop.org/bustle/bustle/raw/master/data/appdata/bustle-welcome.png</image>
+			<caption>Relax with this soothing greyscale welcome page</caption>
+		</screenshot>
+	</screenshots>
+	<url type="homepage">https://github.com/ruby-gtk-project/bustle-rb</url>
+	<url type="bugtracker">https://github.com/ruby-gtk-project/bustle-rb/issues</url>
+	<translation type="gettext">bustle</translation>
+	<provides>
+		<binary>bustle</binary>
+		<binary>bustle-pcap</binary>
+	</provides>
+	<releases>
+		<release date="2026-11-02" version="0.1.0">
+			<description>
+				<p>First release of the Ruby port: record the session bus, the system bus or an arbitrary bus by address, open pcap logs of D-Bus traffic, explore them as sequence diagrams with a details pane and statistics, filter services, and export the diagram as a PDF.</p>
+			</description>
+		</release>
+		<release date="2018-11-15" version="0.7.3">
+			<description>
+				<p>Bustle now handles the application/vnd.tcpdump.pcap MIME type, which in practice means that your file manager will offer to open pcap files with Bustle.</p>
+			</description>
+		</release>
+		<release date="2018-07-24" version="0.7.2">
+			<description>
+				<p>You can now explore messages while they're being recorded. (Filtering, statistics and exporting are still only available once you stop recording.)</p>
+				<p>The raw sender and destination for each message is now shown in the details pane.</p>
+				<p>Bytestrings with embedded NULs which are otherwise ASCII are now shown as ASCII strings.</p>
+			</description>
+		</release>
+		<release date="2018-06-15" version="0.7.1">
+			<description>
+				<p>It's now possible to monitor the system bus (from the user interface and with the bustle-pcap command-line tool), with no need to reconfigure the system bus. It's also possible to monitor an arbitrary bus by address.</p>
+				<p>Bustle now requires that dbus-monitor (≥ 1.9.10) and pkexec are installed on your system.</p>
+			</description>
+		</release>
+	</releases>
+</component>
