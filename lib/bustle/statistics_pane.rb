@@ -27,6 +27,21 @@ module Bustle
   # column view has no equivalent property, so the same thing is said in CSS
   # against a class on the three views.
   class StatisticsPane
+    # A GTK4 list model holds GObjects and nothing else, and upstream's rows
+    # are value objects — Stats::FrequencyInfo, TimeInfo and SizeInfo are Ruby
+    # Data, which no GType describes. So each row goes into the store inside
+    # one of these, which is a GObject the store can be typed on, and every
+    # factory asks it for the value object back.
+    class Row < GLib::Object
+      type_register
+
+      attr_accessor :info
+
+      class << self
+        def of(info) = new.tap { |row| row.info = info }
+      end
+    end
+
     FREQUENCIES_PAGE = "frequencies"
     DURATIONS_PAGE = "durations"
     SIZES_PAGE = "sizes"
@@ -43,6 +58,7 @@ module Bustle
 
     MINIMUM_BAR = 2
     BAR_RANGE = 98
+    BAR_MINIMUM_WIDTH = 120
     MEMBER_WIDTH_CHARS = 30
 
     class << self
@@ -96,8 +112,8 @@ module Bustle
       end
     end
 
-    # Upstream conflates the two buses here, and says it thinks that is okay
-    # for now; the port does the same.
+    # The two buses are conflated into one set of tables, as upstream's
+    # statsPaneSetMessages does with the same two arguments.
     def set_messages(session_messages, system_messages)
       (session_messages + system_messages).then do |all_messages|
         Stats.frequencies(all_messages).tap do |frequencies|
@@ -122,11 +138,11 @@ module Bustle
 
     def size_scroller = @size_scroller ||= scroller
 
-    def frequency_store = @frequency_store ||= Gio::ListStore.new(Stats::FrequencyInfo)
+    def frequency_store = @frequency_store ||= Gio::ListStore.new(Row)
 
-    def duration_store = @duration_store ||= Gio::ListStore.new(Stats::TimeInfo)
+    def duration_store = @duration_store ||= Gio::ListStore.new(Row)
 
-    def size_store = @size_store ||= Gio::ListStore.new(Stats::SizeInfo)
+    def size_store = @size_store ||= Gio::ListStore.new(Row)
 
     def frequency_view = @frequency_view ||= column_view(frequency_store)
 
@@ -140,10 +156,13 @@ module Bustle
       end
     end
 
+    # Upstream's `treeViewColumnSetMinWidth 120` is a floor, not a width: the
+    # bar is never narrower than 120px and grows with the sidebar. A GTK4
+    # column view has no minimum-width property, so the floor is the bar's own
+    # minimum size (`BAR_MINIMUM_WIDTH`, set in the factory) and the column
+    # takes it from there — a `fixed_width` here would make 120 a ceiling too.
     def frequency_count_column
-      @frequency_count_column ||= Gtk::ColumnViewColumn.new(Bustle._("Frequency"), frequency_bar_factory).tap do |col|
-        col.fixed_width = 120
-      end
+      @frequency_count_column ||= Gtk::ColumnViewColumn.new(Bustle._("Frequency"), frequency_bar_factory)
     end
 
     def duration_member_column
@@ -190,8 +209,11 @@ module Bustle
 
       def fill(store, rows)
         store.remove_all
-        rows.each { |row| store.append(row) }
+        rows.each { |row| store.append(Row.of(row)) }
       end
+
+      # What a factory's bound list item is really showing.
+      def value_of(item) = item.item.info
 
       def scroller
         Gtk::ScrolledWindow.new.tap do |sw|
@@ -222,7 +244,7 @@ module Bustle
         Gtk::SignalListItemFactory.new.tap do |factory|
           factory.signal_connect("setup") { |_factory, item| item.child = member_cell }
           factory.signal_connect("bind") do |_factory, item|
-            kind, member = describe.call(item.item)
+            kind, member = describe.call(value_of(item))
             item.child.first_child.tap do |kind_label|
               kind_label.label = kind.to_s
               kind_label.visible = !kind.nil?
@@ -261,18 +283,21 @@ module Bustle
           factory.signal_connect("setup") do |_factory, item|
             item.child = Gtk::Label.new.tap { |label| label.xalign = 1 }
           end
-          factory.signal_connect("bind") { |_factory, item| item.child.label = format_cell.call(item.item) }
+          factory.signal_connect("bind") { |_factory, item| item.child.label = format_cell.call(value_of(item)) }
         end
       end
 
       def frequency_bar_factory
         Gtk::SignalListItemFactory.new.tap do |factory|
           factory.signal_connect("setup") do |_factory, item|
-            item.child = Gtk::ProgressBar.new.tap { |bar| bar.show_text = true }
+            item.child = Gtk::ProgressBar.new.tap do |bar|
+              bar.show_text = true
+              bar.set_size_request(BAR_MINIMUM_WIDTH, -1)
+            end
           end
           factory.signal_connect("bind") do |_factory, item|
-            item.child.fraction = bar_fraction(item.item.frequency)
-            item.child.text = item.item.frequency.to_s
+            item.child.fraction = bar_fraction(value_of(item).frequency)
+            item.child.text = value_of(item).frequency.to_s
           end
         end
       end

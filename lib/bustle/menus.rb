@@ -66,7 +66,7 @@ module Bustle
       @actions[name]&.enabled = enabled
     end
 
-    def statistics_active? = @actions[STATISTICS_ACTION]&.state&.value == true
+    def statistics_active? = @actions[STATISTICS_ACTION]&.state == true
 
     # Upstream's recordMenu, hung off the Record button.
     def record_menu
@@ -127,10 +127,11 @@ module Bustle
         end
       end
 
-      # ruby-gnome unwraps a variant through #value, so the action's state
-      # arrives as a plain true or false.
+      # The state is set as a GLib::Variant and comes back unwrapped: the
+      # bindings convert it, so this is a plain true or false, not a variant
+      # with a #value.
       def toggle_statistics(action)
-        (action.state.value != true).then do |showing|
+        (action.state != true).then do |showing|
           action.set_state(GLib::Variant.new(showing))
           @handlers.fetch(STATISTICS_ACTION).call(showing)
         end

@@ -22,24 +22,29 @@ module Bustle
   # unmarshals the same blob with its own Unmarshaller, which is what the
   # viewer does with the frames it reads back off disk.
   class PcapCli
+    # What g_option_context_get_help(context, FALSE, NULL) prints for
+    # upstream's two option groups, byte for byte: the summary, then the bus
+    # group it added before the main one, descriptions in a column 20
+    # characters wide, and a blank line at the end. Upstream disables GLib's
+    # own --help so that both groups show, which is why the help text has no
+    # "Help Options:" section of its own.
     USAGE = <<~USAGE
       Usage:
         bustle-pcap [OPTION…] FILENAME
 
       Logs D-Bus traffic to FILENAME in a format suitable for bustle
 
-      Help Options:
-        -h, --help       Print help and exit
+      Bus Options:
+        -e, --session     Monitor session bus (default)
+        -y, --system      Monitor system bus
+        -a, --address     Monitor given D-Bus address
 
       Application Options:
-        -v, --verbose    Print brief summaries of captured messages to stdout
-        -q, --quiet      Don't print out instructions
-        -V, --version    Print version information and exit
+        -v, --verbose     Print brief summaries of captured messages to stdout
+        -q, --quiet       Don't print out instructions
+        -V, --version     Print version information and exit
+        -h, --help        Print help and exit
 
-      Bus Options:
-        -e, --session    Monitor session bus (default)
-        -y, --system     Monitor system bus
-        -a, --address    Monitor given D-Bus address
     USAGE
 
     VERSION_NOTICE = <<~NOTICE
@@ -53,18 +58,25 @@ module Bustle
 
     USAGE_EXIT_STATUS = 2
 
-    BUS_FLAGS = {
-      "-e"        => Monitor::SESSION_BUS,
-      "--session" => Monitor::SESSION_BUS,
-      "-y"        => Monitor::SYSTEM_BUS,
-      "--system"  => Monitor::SYSTEM_BUS,
-    }.freeze
+    # Upstream's two GOptionEntry tables, bus group first, each entry's long
+    # and short spelling under the name the C file gives its variable.
+    Option = Struct.new(:name, :long, :short)
 
-    ADDRESS_FLAGS = ["-a", "--address"].freeze
-    VERBOSE_FLAGS = ["-v", "--verbose"].freeze
-    QUIET_FLAGS = ["-q", "--quiet"].freeze
-    VERSION_FLAGS = ["-V", "--version"].freeze
-    HELP_FLAGS = ["-h", "--help"].freeze
+    OPTIONS = [
+      Option.new(:session, "--session", "-e"),
+      Option.new(:system, "--system", "-y"),
+      Option.new(:address, "--address", "-a"),
+      Option.new(:verbose, "--verbose", "-v"),
+      Option.new(:quiet, "--quiet", "-q"),
+      Option.new(:version, "--version", "-V"),
+      Option.new(:help, "--help", "-h"),
+    ].freeze
+
+    # --address is upstream's one G_OPTION_ARG_STRING; the rest are
+    # G_OPTION_ARG_NONE switches, which take nothing.
+    ARGUMENT_OPTIONS = [:address].freeze
+
+    OPTION_TERMINATOR = "--"
 
     class << self
       def run(argv, output: $stdout, errors: $stderr) = new(argv, output:, errors:).run
@@ -74,13 +86,9 @@ module Bustle
       @argv = argv
       @output = output
       @errors = errors
-      @buses = []
+      @switches = {}
       @address = nil
       @filenames = []
-      @verbose = false
-      @quiet = false
-      @version = false
-      @help = false
       @invalid = nil
       @status = 0
     end
@@ -95,40 +103,83 @@ module Bustle
 
     private
 
+      # GOption's grammar, which is not quite anyone else's. Long options must
+      # be spelled in full — GLib has no abbreviations — and take their
+      # argument after a `=` or as the next word. Short options bundle, and a
+      # bundle containing one that takes an argument takes the next word for
+      # it wherever in the bundle it appears, so `-qa ADDRESS` and
+      # `-aq ADDRESS` both work. `--` ends the options. Everything else is a
+      # filename, including a bare `-`. The first thing GLib cannot parse
+      # stops the parse.
       def parse
-        arguments = @argv.dup
-        until arguments.empty?
-          take(arguments.shift, arguments)
+        @arguments = @argv.dup
+        until @arguments.empty? || @invalid
+          take(@arguments.shift)
         end
       end
 
-      def take(argument, rest)
-        case argument
-        when *BUS_FLAGS.keys then @buses << BUS_FLAGS.fetch(argument)
-        when *ADDRESS_FLAGS then @address = rest.shift
-        when *VERBOSE_FLAGS then @verbose = true
-        when *QUIET_FLAGS then @quiet = true
-        when *VERSION_FLAGS then @version = true
-        when *HELP_FLAGS then @help = true
-        else classify(argument)
+      def take(argument)
+        case
+        when argument == OPTION_TERMINATOR then @filenames.concat(@arguments.slice!(0, @arguments.length))
+        when argument.start_with?("--") then take_long(argument)
+        when argument.start_with?("-") && argument.length > 1 then take_short(argument)
+        else @filenames << argument
         end
       end
 
-      def classify(argument)
-        if argument.start_with?("-")
-          @invalid = "Unknown option #{argument}"
+      def take_long(argument)
+        argument.split("=", 2).then do |spelling, attached|
+          OPTIONS.find { |option| option.long == spelling }.then do |option|
+            if option
+              apply(option, argument, attached)
+            else
+              @invalid = "Unknown option #{argument}"
+            end
+          end
+        end
+      end
+
+      # Every character in the bundle is an option of its own; the token as a
+      # whole is what GLib names in its complaint about any of them.
+      def take_short(argument)
+        argument[1..].each_char do |letter|
+          OPTIONS.find { |option| option.short == "-#{letter}" }.then do |option|
+            if option
+              apply(option, "-#{letter}", nil)
+            else
+              @invalid = "Unknown option #{argument}"
+            end
+          end
+        end
+      end
+
+      # A switch is set however it was spelled, `--session=whatever`
+      # included; an option that takes an argument gets the text after its
+      # `=`, or the next word, or a complaint.
+      def apply(option, spelling, attached)
+        if ARGUMENT_OPTIONS.include?(option.name)
+          take_argument(option, spelling, attached || @arguments.shift)
         else
-          @filenames << argument
+          @switches[option.name] = true
         end
       end
 
-      # Upstream checks these in this order, and --help and --version win
-      # over everything, including a missing filename.
+      def take_argument(option, spelling, value)
+        case
+        when !@invalid.nil? then nil
+        when value.nil? then @invalid = "Missing argument for #{spelling}"
+        when option.name == :address then @address = value
+        end
+      end
+
+      # Upstream checks these in this order: a parse error outranks even
+      # --help, and then --help and --version win over everything, including a
+      # missing filename.
       def complaint
-        if @help || @version
-          nil
-        elsif @invalid
+        if @invalid
           @invalid
+        elsif help? || version?
+          nil
         elsif buses_specified > 1
           "You may only specify one of --session, --system and --address"
         elsif @filenames.length != 1
@@ -136,13 +187,28 @@ module Bustle
         end
       end
 
-      def buses_specified = @buses.length + (@address ? 1 : 0)
+      # Upstream's `!!session_specified + !!system_specified + !!address`:
+      # each of the three counts once however many times it was given, so
+      # `-e -e` is one bus and `-e -y` is two.
+      def buses_specified = [session?, system?, !@address.nil?].count(true)
+
+      def session? = @switches.fetch(:session, false)
+
+      def system? = @switches.fetch(:system, false)
+
+      def verbose? = @switches.fetch(:verbose, false)
+
+      def quiet? = @switches.fetch(:quiet, false)
+
+      def version? = @switches.fetch(:version, false)
+
+      def help? = @switches.fetch(:help, false)
 
       def dispatch
-        if @help
+        if help?
           @output.print(USAGE)
           0
-        elsif @version
+        elsif version?
           @output.print(VERSION_NOTICE)
           0
         else
@@ -156,11 +222,13 @@ module Bustle
         USAGE_EXIT_STATUS
       end
 
+      # Upstream's precedence: an address beats --system, and --session is
+      # the default whether it was asked for or not.
       def target
-        if @address
-          Monitor.target_for(@address)
-        else
-          @buses.first || Monitor::SESSION_BUS
+        case
+        when @address then Monitor.target_for(@address)
+        when system? then Monitor::SYSTEM_BUS
+        else Monitor::SESSION_BUS
         end
       end
 
@@ -184,7 +252,7 @@ module Bustle
       end
 
       def announce
-        unless @quiet
+        unless quiet?
           @output.puts("Logging D-Bus traffic to '#{filename}'...")
           @output.puts("Hit Control-C to stop logging.")
         end
@@ -193,7 +261,7 @@ module Bustle
       # Upstream's message_logged_cb, which prints sender, destination,
       # message type and member for each captured message.
       def summarise(_timestamp, body)
-        if @verbose
+        if verbose?
           describe(body).then { |line| @output.puts(line) }
         end
       end

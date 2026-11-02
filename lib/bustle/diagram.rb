@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "gtk4"
+require "pango"
 
 require_relative "marquee"
 
@@ -123,7 +124,7 @@ module Bustle
       # size upstream uses, with markup rather than plain text so the member
       # labels can embolden and dim parts of themselves.
       def layout(context, marquee, ellipsize: :none, alignment: :left, width: nil)
-        Pango::Cairo.create_layout(context).tap do |text|
+        context.create_pango_layout.tap do |text|
           text.markup = marquee.to_markup
           text.font_description = font
           text.ellipsize = ellipsize
@@ -134,7 +135,10 @@ module Bustle
         end
       end
 
-      def show_layout(context, text) = Pango::Cairo.show_layout(context, text)
+      # The pangocairo entry points live on the Cairo context in the Ruby
+      # bindings (`Pango::Cairo` is not a namespace they define), so a layout
+      # is made by the context that will draw it and shown through the same.
+      def show_layout(context, text) = context.show_pango_layout(text)
 
       def from_centre(x, y, width)
         [x - (width / 2), y - (EVENT_HEIGHT / 2), x + (width / 2), y + (EVENT_HEIGHT / 2)]

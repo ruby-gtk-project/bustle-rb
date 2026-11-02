@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require "gio2"
 require "open3"
 
 require_relative "pcap_loader"
+require_relative "types"
 
 module Bustle
   # Records D-Bus traffic into a pcap log, a message at a time.
@@ -13,9 +15,12 @@ module Bustle
   # `flatpak-spawn --host` inside a sandbox), it reads that subprocess's
   # stdout as a pcap stream with libpcap and copies every frame into the
   # output file with pcap_dump(), and it emits `message-logged` per frame and
-  # `stopped` once. It also owns a well-known name on the bus so the viewer
-  # can hide the monitor's own traffic, which this port does not: that needs a
-  # D-Bus connection of its own, and the name is only a hint to the viewer.
+  # `stopped` once. It also opens a second connection to the bus being
+  # recorded, requests a well-known name of its own on it so the viewer can
+  # hide the monitor's own traffic, and asks that bus who owns every
+  # well-known name on it — see #seed_names, which is the whole reason a
+  # service that was already running when the recording started is drawn
+  # under its own name rather than as a bare ":1.42".
   #
   # So this is the same subprocess supervisor with the libpcap half written in
   # Ruby. The output file is byte-for-byte what dbus-monitor wrote, because
@@ -45,7 +50,34 @@ module Bustle
     # GIOErrorEnum.
     IO_ERROR_QUARK = "g-io-error-quark"
     IO_ERROR_FAILED = 0
+    IO_ERROR_PERMISSION_DENIED = 14
     IO_ERROR_CANCELLED = 19
+
+    # The exit statuses pkexec uses, which upstream's handle_error reads back
+    # off the subprocess and reports as two quite different things.
+    PKEXEC_DISMISSED_STATUS = 126
+    PKEXEC_UNAUTHORIZED_STATUS = 127
+
+    # Prefix of the name claimed by the connection that collects name owners,
+    # as c-sources/pcap-monitor.c names it.
+    MONITOR_NAME_PREFIX = "org.freedesktop.Bustle.Monitor."
+
+    DBUS_PATH = "/org/freedesktop/DBus"
+
+    # Upstream's flags for the name-collecting connection: it speaks to a
+    # message bus and authenticates as a client, so it gets a unique name.
+    CONNECTION_FLAGS = Gio::DBusConnectionFlags::AUTHENTICATION_CLIENT |
+                       Gio::DBusConnectionFlags::MESSAGE_BUS_CONNECTION
+
+    # -1 is GDBus's own default timeout, which is what upstream passes.
+    CALL_TIMEOUT = -1
+
+    # The three bus methods this makes, and what each one replies with.
+    REPLY_SIGNATURES = {
+      "RequestName"  => "(u)",
+      "ListNames"    => "(as)",
+      "GetNameOwner" => "(s)",
+    }.freeze
 
     READ_SIZE = 64 * 1024
 
@@ -120,6 +152,11 @@ module Bustle
 
     # The blocking equivalent, for the command-line recorder: pump until the
     # subprocess goes away or #stop is called.
+    #
+    # The main context is iterated as well as the pipe read, because the
+    # name-collecting connection of #seed_names is opened asynchronously and
+    # its callback arrives on the default context — which the GUI's main loop
+    # turns for us and a command-line recorder has to turn for itself.
     def run
       until @stopped
         IO.select(
@@ -129,6 +166,7 @@ module Bustle
           POLL_INTERVAL,
         )
         pump
+        GLib::MainContext.default.iteration(false)
       end
       self
     end
@@ -214,10 +252,132 @@ module Bustle
         @buffer.slice!(0, PcapLoader::GLOBAL_HEADER_SIZE).then do |header|
           @byte_order = byte_order_of(header)
           link_type = unpack_word(header[20, 4])
-          unless [PcapLoader::LINK_TYPE_NULL, PcapLoader::LINK_TYPE_DBUS].include?(link_type)
+          if [PcapLoader::LINK_TYPE_NULL, PcapLoader::LINK_TYPE_DBUS].include?(link_type)
+            seed_names
+          else
             stop_with(IO_ERROR_FAILED, "Incorrect link type #{link_type}")
           end
         end
+      end
+
+      # Upstream dispatches dump_names_async() from start_pcap(), the moment
+      # the pcap stream proves readable — which is also the moment
+      # dbus-monitor is known to be connected to the bus, so everything below
+      # lands in the log. Here the equivalent moment is a global header that
+      # parsed and named a link type we understand.
+      #
+      # pcap-monitor.c says what the exercise is for in its own words: the
+      # GetNameOwner replies are "just used by the UI to fill in the initial
+      # owners of each well-known name". Nothing in a capture says which
+      # well-known names a connection already owned when recording started —
+      # NameOwnerChanged only reports changes — so without this every service
+      # that was already on the bus is drawn as a bare unique name, and the
+      # filter dialog lists unique names instead of service names.
+      #
+      # The connection is opened asynchronously, as upstream opens it on a
+      # thread, because a bus with two hundred names on it is two hundred
+      # round trips and neither the GUI nor the pipe can wait for them.
+      def seed_names
+        bus_address.then do |address|
+          if address
+            Gio::DBusConnection.new_for_address(
+              address,
+              CONNECTION_FLAGS,
+              nil,
+              nil,
+            ) { |*results| dump_names(results.find { |result| result.is_a?(Gio::DBusConnection) }) }
+          end
+        end
+      rescue GLib::Error
+        # A bus that cannot be reached a second time costs the log its initial
+        # name owners; it does not stop the recording, which is dbus-monitor's
+        # job and is already under way.
+        nil
+      end
+
+      # Upstream's get_connection: the address it was given, or the address of
+      # the bus it was told to record.
+      def bus_address
+        case @target
+        when SESSION_BUS then Gio::DBus.address_get_for_bus_sync(:session, nil)
+        when SYSTEM_BUS then Gio::DBus.address_get_for_bus_sync(:system, nil)
+        else @target.to_s
+        end
+      rescue GLib::Error
+        nil
+      end
+
+      # Upstream's dump_names_thread_func, minus the thread: claim a name, ask
+      # after every well-known name, hang up.
+      def dump_names(connection)
+        if connection && !@stopped
+          request_monitor_name(connection)
+          well_known_names(connection).each { |name| get_name_owner(connection, name) }
+        end
+        connection&.close_sync(nil)
+      rescue GLib::Error
+        nil
+      end
+
+      # Upstream owns org.freedesktop.Bustle.Monitor.<unique name> on this
+      # connection so the viewer can hide the monitor's own traffic, mangling
+      # ":1.42" into "_1_42" with g_strcanon — every character that is not a
+      # digit becomes an underscore, because a bus name component can hold
+      # neither a colon nor a dot. g_bus_own_name_on_connection() is not in
+      # the Ruby bindings, and what it sends is this RequestName call, which
+      # is what the viewer is reading the log for; upstream notes that merely
+      # requesting the name is enough, which is as well, because on the system
+      # bus the request is refused.
+      def request_monitor_name(connection)
+        connection.unique_name.then do |unique_name|
+          if unique_name
+            call(connection, "RequestName", arguments("(su)", "('#{monitor_name(unique_name)}', 0)"))
+          end
+        end
+      end
+
+      def monitor_name(unique_name) = "#{MONITOR_NAME_PREFIX}#{unique_name.gsub(/[^0-9]/, "_")}"
+
+      # Unique names are skipped because a unique name owns itself, and
+      # org.freedesktop.DBus because the bus is not a name the bus hands out,
+      # exactly as upstream's list_all_names filters them.
+      def well_known_names(connection)
+        call(connection, "ListNames", nil).then do |reply|
+          if reply
+            reply.first.reject { |name| name.start_with?(":") || name == Types::DBUS_NAME }
+          else
+            []
+          end
+        end
+      end
+
+      # The reply is deliberately thrown away: it is the capture that wants
+      # it, not us. An error is thrown away too — upstream's comment explains
+      # that an owner which vanished between ListNames and here will have sent
+      # a NameOwnerChanged the viewer can read instead.
+      def get_name_owner(connection, name)
+        call(connection, "GetNameOwner", arguments("(s)", "('#{name}',)"))
+      end
+
+      # Bus names are made of letters, digits, dots, dashes and underscores,
+      # so none of them needs escaping in GVariant's text form — and the Ruby
+      # bindings offer no other way to build a tuple variant.
+      def arguments(signature, text) = GLib::Variant.parse(text, signature)
+
+      def call(connection, member, parameters)
+        connection.call_sync(
+          Types::DBUS_NAME,
+          DBUS_PATH,
+          Types::DBUS_INTERFACE,
+          member,
+          parameters,
+          GLib::VariantType.new(REPLY_SIGNATURES.fetch(member)),
+          Gio::DBusCallFlags::NONE,
+          CALL_TIMEOUT,
+          nil,
+        )
+      rescue GLib::Error
+        nil
       end
 
       def byte_order_of(header)
@@ -272,18 +432,64 @@ module Bustle
         if @cancelled
           stop_with(IO_ERROR_CANCELLED, "")
         else
-          stop_with(IO_ERROR_FAILED, exit_message)
+          pass_on_diagnostics
+          report_exit(wait_status)
         end
       end
 
-      # dbus-monitor's own complaint if it has one, and upstream's wording for
-      # an unexplained end of stream otherwise.
-      def exit_message
+      # Upstream's handle_error reads the subprocess's exit status and reports
+      # three of them as something other than a failure. 126 and 127 are
+      # pkexec's, so they only mean this on the system bus: the user closed
+      # the authorisation dialog — which the recorder then swallows, exactly
+      # as it swallows a stop the user asked for — or polkit refused. A clean
+      # exit is the bus itself going away, which upstream also calls
+      # cancellation, with a comment about monitoring a test suite or a
+      # session you then log out of.
+      def report_exit(status)
+        if @target == SYSTEM_BUS && status&.exitstatus == PKEXEC_DISMISSED_STATUS
+          stop_with(IO_ERROR_CANCELLED, "User dismissed polkit authorization dialog")
+        elsif @target == SYSTEM_BUS && status&.exitstatus == PKEXEC_UNAUTHORIZED_STATUS
+          stop_with(IO_ERROR_PERMISSION_DENIED, "Not authorized to monitor system bus")
+        elsif status&.exitstatus&.zero?
+          stop_with(IO_ERROR_CANCELLED, "dbus-monitor exited cleanly")
+        else
+          stop_with(IO_ERROR_FAILED, prefixed(spawn_message(status)))
+        end
+      end
+
+      def wait_status
+        @process&.value
+      rescue IOError
+        nil
+      end
+
+      # GLib's own wording for a child that exited or was killed, which is
+      # what upstream's G_SPAWN_EXIT_ERROR message carries.
+      def spawn_message(status)
+        case
+        when status.nil? then "EOF when reading from dbus-monitor"
+        when status.signaled? then "Child process killed by signal #{status.termsig}"
+        else "Child process exited with code #{status.exitstatus}"
+        end
+      end
+
+      # Upstream prefixes the subprocess's complaint while the monitor is
+      # still starting up, which here means no pcap header ever arrived.
+      def prefixed(message)
+        if @byte_order
+          message
+        else
+          "Failed to start dbus-monitor: #{message}"
+        end
+      end
+
+      # dbus-monitor's stderr is inherited by upstream's monitor and so lands
+      # on the terminal; this one captures it to keep it out of the pcap
+      # stream, so it is written back out where upstream's would have gone.
+      def pass_on_diagnostics
         diagnostics.then do |text|
-          if text.empty?
-            "EOF when reading from dbus-monitor"
-          else
-            text
+          unless text.empty?
+            $stderr.write("#{text}\n")
           end
         end
       end

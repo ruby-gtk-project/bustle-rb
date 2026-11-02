@@ -18,6 +18,29 @@ module Bustle
   # well-known names in one namespace is listed as "org.example.{Foo,Bar}"
   # rather than as two full names, because the interesting part is the tail.
   class FilterDialog
+    LIST_CSS_CLASS = "bustle-filter-names"
+
+    # Upstream turns the tree view's rules hint on, with the comment "we want
+    # rules because otherwise it's tough to see where each group starts and
+    # ends" — a connection owning four well-known names is four lines in one
+    # row, and without banding it is not clear where the next connection
+    # begins. GTK4 has no rules hint, so the banding is said in CSS against a
+    # class on the list, in the foreground colour at the alpha a theme's own
+    # alternating rows use. The node name is `list`, not `listbox`: GTK4
+    # renamed GtkListBox's CSS node and a GTK3-era selector silently matches
+    # nothing.
+    CSS = <<~CSS
+      list.#{LIST_CSS_CLASS} > row:nth-child(even) {
+        background-color: alpha(currentColor, 0.04);
+      }
+    CSS
+
+    # Upstream's size requests: 600x371 on the name view and 600 wide on the
+    # instructions, so the dialog opens wide enough to show a bus name in full
+    # even when the parent window is narrow.
+    NAME_VIEW_WIDTH = 600
+    NAME_VIEW_HEIGHT = 371
+
     def initialize(participants:, hidden:, on_apply:)
       @participants = participants
       @hidden = hidden
@@ -26,11 +49,12 @@ module Bustle
     end
 
     def present(parent)
+      FilterDialog.install_css
       window.tap do |dialog|
         dialog.transient_for = parent
         dialog.default_width = (parent.width * 7) / 8
         dialog.default_height = parent.height / 2
-        dialog.child = toolbar_view
+        dialog.content = toolbar_view
 
         toolbar_view.tap do |view|
           view.add_top_bar(header_bar)
@@ -97,6 +121,7 @@ module Bustle
       @instructions ||= Gtk::Label.new(instructions_text).tap do |label|
         label.wrap = true
         label.xalign = 0
+        label.set_size_request(NAME_VIEW_WIDTH, -1)
       end
     end
 
@@ -112,10 +137,29 @@ module Bustle
       @list_box ||= Gtk::ListBox.new.tap do |list|
         list.selection_mode = :none
         list.add_css_class("boxed-list")
+        list.add_css_class(LIST_CSS_CLASS)
+        list.set_size_request(NAME_VIEW_WIDTH, NAME_VIEW_HEIGHT)
       end
     end
 
     class << self
+      # One provider for the whole display, added once however many dialogs
+      # ask for it.
+      def install_css
+        unless @installed
+          @installed = true
+          Gtk::StyleContext.add_provider_for_display(
+            Gdk::Display.default,
+            css_provider,
+            Gtk::StyleProvider::PRIORITY_APPLICATION,
+          )
+        end
+      end
+
+      def css_provider
+        @css_provider ||= Gtk::CssProvider.new.tap { |provider| provider.load(data: CSS) }
+      end
+
       # "org.example.{Foo,Bar}", one line per namespace, or the unique name
       # for a connection that never claimed a well-known one.
       def format_names(unique_name, other_names)

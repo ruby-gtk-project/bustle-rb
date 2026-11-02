@@ -36,6 +36,8 @@ module Bustle
       scroller.tap do |sw|
         sw.child = drawing_area
 
+        [horizontal_adjustment, vertical_adjustment].each { |adjustment| pin_step_increment(adjustment) }
+
         drawing_area.tap do |area|
           area.set_draw_func { |_widget, context, _width, _height| draw(context) }
           area.add_controller(click_gesture)
@@ -125,6 +127,17 @@ module Bustle
       def select(&move)
         update_selection(&move)
         true
+      end
+
+      # Upstream sets the step increment on both of the layout's adjustments
+      # to one event's height, so Left and Right — and the scrollbar arrows —
+      # move by exactly one message row. GTK4's viewport owns the scrolled
+      # window's adjustments and reconfigures them on every allocation, step
+      # increment included (it makes it a tenth of the extent), so the value
+      # has to be put back each time rather than set once.
+      def pin_step_increment(adjustment)
+        adjustment.step_increment = Diagram::EVENT_HEIGHT
+        adjustment.signal_connect("changed") { adjustment.step_increment = Diagram::EVENT_HEIGHT }
       end
 
       def step(adjustment, direction)

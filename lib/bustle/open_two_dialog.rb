@@ -15,7 +15,14 @@ module Bustle
   # insensitive until both logs have been chosen, and choosing a session log
   # moves the system log chooser to the same folder — but only while that
   # chooser is still empty, so picking the second file from elsewhere cannot
-  # unpick the first.
+  # unpick the first, which is the condition upstream's
+  # propagateCurrentFolder tests.
+  #
+  # Upstream propagates on `current-folder-changed`, so merely browsing in one
+  # chooser moves the other even before a file is picked. GtkFileDialog is a
+  # one-shot dialog with no signals at all — GTK4 dropped every signal from
+  # GtkFileChooser — so browsing cannot be observed, and the folder can only
+  # travel when a file is actually chosen.
   class OpenTwoDialog
     def initialize(on_open:)
       @on_open = on_open
@@ -25,7 +32,7 @@ module Bustle
     def present(parent)
       window.tap do |dialog|
         dialog.transient_for = parent
-        dialog.child = toolbar_view
+        dialog.content = toolbar_view
 
         toolbar_view.tap do |view|
           view.add_top_bar(header_bar)

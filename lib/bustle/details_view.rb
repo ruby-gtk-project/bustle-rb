@@ -105,19 +105,26 @@ module Bustle
 
       def show_message(detailed)
         member = member_of(detailed)
-        type_row.subtitle = type_name(detailed).to_s
-        sender_row.subtitle = sender_of(detailed).to_s
+        type_row.subtitle = as_text(type_name(detailed))
+        sender_row.subtitle = as_text(sender_of(detailed))
         show_destination(destination_of(detailed))
-        path_row.subtitle = member&.path.to_s
+        path_row.subtitle = as_text(member&.path)
         member_row.subtitle = member_markup(member)
         arguments_view.buffer.text = format_arguments(detailed)
         container.visible = true
       end
 
       def show_destination(destination)
-        destination_row.subtitle = destination.to_s
+        destination_row.subtitle = as_text(destination)
         destination_row.visible = !destination.nil?
       end
+
+      # Upstream draws this line deliberately: `labelSetText` for the sender,
+      # the destination and the path, `labelSetMarkup` only for the member,
+      # which is the one value it marks up itself. An AdwActionRow subtitle is
+      # markup whatever is put in it, so the four plain values are escaped on
+      # the way in rather than left to be reinterpreted.
+      def as_text(value) = Marquee.escape_markup(value.to_s)
 
       def type_name(detailed)
         case detailed.event

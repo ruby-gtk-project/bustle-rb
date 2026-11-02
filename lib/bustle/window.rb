@@ -129,6 +129,10 @@ module Bustle
               pages.add_named(please_hold_page.build, PLEASE_HOLD_PAGE)
               pages.add_named(sidebar_paned, CANVAS_PAGE)
 
+              # The welcome page is what a window with no log in it shows,
+              # which a stack can only be told once it has that page.
+              pages.visible_child_name = INSTRUCTIONS_PAGE
+
               sidebar_paned.tap do |split|
                 split.start_child = sidebar_toolbar
                 split.end_child = diagram_paned
@@ -217,7 +221,6 @@ module Bustle
     def stack
       @stack ||= Gtk::Stack.new.tap do |pages|
         pages.vexpand = true
-        pages.visible_child_name = INSTRUCTIONS_PAGE
       end
     end
 
