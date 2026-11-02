@@ -2,119 +2,134 @@
 
 | | |
 |---|---|
-| Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `04031bc` |
-| Upstream tests | **23** |
-| Ported | **0** |
-| Gaps | **23** |
-| Test command | `bundle exec rspec` — currently cannot run (see below) |
+| Upstream | `master` @ `0a8cf38` |
+| Port | `ruby` @ `16f6787` |
+| Upstream tests | 23 |
+| Ported | 23 |
+| Gaps | 0 |
+| Extra | 1 |
+| Test command | `bundle exec rspec` — **could not be run here** (see below) |
 
-## Census
+## How the census was taken
 
-Upstream declares three `Test-suite` stanzas in `bustle.cabal`:
+`scripts/test-census.sh` returned **0 rows** for the upstream tree. That is a
+scanner miss, not a finding about upstream: the script knows GLib, pytest,
+Jasmine, Rust and Ruby, and upstream is Haskell — QuickCheck `prop_*` functions
+collected by a `$quickCheckAll` splice, and `test-framework`/HUnit `testCase`
+calls. **This defect is owed back to the `test-parity` skill**; two more
+patterns (`^prop_[A-Za-z_']+`, and `testCase "…"`) would have found all 23.
 
-| Suite | `main-is` | Harness | Cases |
-|---|---|---|---:|
-| `test-regions` | `Test/Regions.hs` | QuickCheck `quickCheckAll` | 14 |
-| `test-renderer` | `Test/Renderer.hs` | test-framework + HUnit | 8 |
-| `test-pcap-crash` | `Test/PcapCrash.hs` | `exitcode-stdio-1.0` | 1 |
+The build-file cross-check is what caught it. `bustle.cabal` declares three
+`Test-suite` stanzas (`:170 test-pcap-crash`, `:195 test-regions`,
+`:202 test-renderer`) and one `Executable dump-messages` (`:144`, buildable only
+under the `InteractiveTests` flag). Three declared suites against zero census
+rows meant the regexes had missed the registration form, so the suites below
+were censused by hand, file by file.
 
-`Test/DumpMessages.hs` is an `Executable` behind the `InteractiveTests` flag,
-not a test suite — it dumps a log to stdout for a human. It is outside the
-count.
+`Test/DumpMessages.hs` is **not** a test: it is an `Executable`, it takes a
+filename on `argv`, it asserts nothing, and its printing loop is commented out.
+It is excluded from the count. `Test/data/log-with-h.bustle` is a fixture.
 
-`Test/data/log-with-h.bustle` is the one fixture, and it **was not copied into
-the port** — no `spec/fixtures`, no `spec/data`, nothing. Row 23 cannot be
-ported until it is.
+The port's census found 24 rows on `it(...)`, with no duplicate identifiers
+(`cut -f2 | sort | uniq -d` is empty), so `file#identifier` is a sufficient key.
 
-## The port's suite
+## Suite: test-regions — `Test/Regions.hs` (14 properties)
 
-`spec/` contains `README.md` and `spec_helper.rb`. **There are no `*_spec.rb`
-files anywhere in the repository.**
+Fourteen QuickCheck properties over `Bustle.Regions`, each run by QuickCheck
+over 100 generated `ValidRegions` — a sorted list of stripe tops, one stripe
+per adjacent pair reaching a random fraction of the way to the next top, with
+that fraction pinned at `1.0` one time in eight so stripes sometimes touch
+exactly, and distinct values per stripe.
 
-Worse, the harness does not load: `spec/spec_helper.rb` line 27 is
-`require "bustle/rb"`, and there is no `lib/bustle/rb.rb` — only
-`lib/bustle/rb/version.rb`. Any `rspec` invocation raises `LoadError` before
-it reaches an example. The suite is not empty-but-green; it is broken.
+| # | Upstream test | Purpose | Port test | State |
+|---|---|---|---|---|
+| 1 | `prop_NonOverlapping_generator_works` | the generator itself produces non-overlapping stripes — a guard on the other thirteen | `spec/regions_spec.rb#generates stripes that do not overlap` (:101) | ported |
+| 2 | `prop_InitiallyUnselected` | a fresh selection has nothing selected | `spec/regions_spec.rb#selects nothing to begin with` (:108) | ported |
+| 3 | `prop_UpDoesNothing` | Up from an unselected selection stays unselected — it does not wrap to the end | `spec/regions_spec.rb#selects nothing when moving up from an unselected selection` (:115) | ported |
+| 4 | `prop_DownDoesNothing` | Down from the *last* region stays on the last region — it does not fall off | `spec/regions_spec.rb#stays on the last region when moving down from it` (:122) | ported |
+| 5 | `prop_DownWorks` | Down from an unselected selection selects the *first* region | `spec/regions_spec.rb#selects the first region when moving down from an unselected selection` (:129) | ported |
+| 6 | `prop_UpdateToFirst` | clicking the midpoint of the first region selects it **and** leaves `rsBefore` empty | `spec/regions_spec.rb#selects the first region when clicked inside it, with nothing before it` (:136) | ported |
+| 7 | `prop_SelectFirst` | Home selects the first region | `spec/regions_spec.rb#selects the first region on First` (:146) | ported |
+| 8 | `prop_SelectLast` | End selects the last region | `spec/regions_spec.rb#selects the last region on Last` (:153) | ported |
+| 9 | `prop_UpdateToAny` | clicking the midpoint of *any* one region selects exactly that region, for every region in the list | `spec/regions_spec.rb#selects exactly the region a click lands in, for every region` (:160) | ported |
+| 10 | `prop_UpdateToAll` | clicking every region in a **shuffled** order selects each in turn — the cursor is not left stranded by a backwards jump | `spec/regions_spec.rb#keeps up with clicks on every region in a shuffled order` (:169) | ported |
+| 11 | `prop_ClickAlwaysInSelection` | after **any** sequence of up/down/first/last/click, the recorded last click lies inside the selected stripe | `spec/regions_spec.rb#keeps the last click inside the selected stripe after any sequence of moves` (:181) | ported |
+| 12 | `prop_SelectWorks` | selecting by value finds the region holding it, wherever the cursor was | `spec/regions_spec.rb#selects the region holding a given value, wherever the cursor is` (:195) | ported |
+| 13 | `prop_Append` | appending the tail to a selection built from the head equals building the whole list at once, split at every index | `spec/regions_spec.rb#appends regions to make the same selection as building the whole list` (:205) | ported |
+| 14 | `prop_FlattenThenNewIsIdempotent` | flattening a selection and rebuilding from the result gives back an equal selection | `spec/regions_spec.rb#rebuilds an identical selection from its own flattened regions` (:215) | ported |
 
-Independently, `require "bustle"` fails in this checkout because the `gtk4`
-gem is not installed and `lib/bustle/diagram.rb` requires `"gtk4"` at load
-time from `lib/bustle.rb`. So the backend modules the 23 upstream tests
-actually exercise (`Regions`, `Renderer`, `PcapLoader`) cannot be required in
-isolation either, despite `lib/bustle.rb`'s comment that the model half "can
-be used on their own". Closing the gaps below needs that comment made true
-first, or the specs will drag GTK4 into a headless test run.
+All fourteen are genuinely properties in the port, not examples: `each_case`
+(`regions_spec.rb:88-92`) runs each one over 100 generated region lists from
+`RegionsProperties::Generator`, which reproduces upstream's generator including
+the one-in-eight dense case (`:76-82`).
 
-## Suite: test-regions (14 tests) — `Test/Regions.hs` -> `Bustle::Regions`
+**One narrowing, and it is a real one.** Upstream draws its stripe tops from
+`arbitrary :: Double`, which is signed; the port's `tops`
+(`regions_spec.rb:56-58`) draws from `random.rand(1000.0)`, which is not. The
+spec's own header (`:16-24`) says why. The effect is that nine of these
+fourteen properties no longer see a region list lying entirely below the
+origin, so if `Regions#update` mishandles a negative stripe the port's suite
+will not say so where upstream's would. Property 11 is unaffected — its clicks
+still range over `-1000..1000` (`:80`). Carrying this row as `ported` is
+correct (a named test pins the property) and the narrowing is mine to remove,
+not to keep explaining.
 
-The port's `lib/bustle/regions.rb` implements every function these properties
-quantify over (`build`, `update`, `up`, `down`, `first`, `last`, `select`,
-`append`, `flatten`, `last_click`, `non_overlapping?`), so there is no API
-barrier to any row.
+## Suite: test-renderer — `Test/Renderer.hs` (8 cases)
 
-| # | Upstream test | Purpose | Port test | State | Behaviour still owed |
-|---|---|---|---|---|---|
-| 1 | `prop_NonOverlapping_generator_works` | the generator really does produce non-overlapping stripes | — | **gap** | `Regions.non_overlapping?` is true for any ascending stripe list built from sorted tops |
-| 2 | `prop_InitiallyUnselected` | a fresh selection has nothing selected | — | **gap** | `RegionSelection.build(rs).current` is nil for any valid region list |
-| 3 | `prop_UpDoesNothing` | Up from unselected selects nothing | — | **gap** | `build(rs).up.current` is nil |
-| 4 | `prop_DownDoesNothing` | Down from the last region stays on the last region | — | **gap** | `build(rs).last.down.current` is the final region |
-| 5 | `prop_DownWorks` | Down from unselected selects the first region | — | **gap** | `build(rs).down.current` is the first region |
-| 6 | `prop_UpdateToFirst` | clicking inside the first stripe selects it and leaves nothing before it | — | **gap** | `update(midpoint_of_first)` selects region 1 and `before` is empty |
-| 7 | `prop_SelectFirst` | `regionSelectionFirst` selects the first region | — | **gap** | `build(rs).first.current` is region 1 |
-| 8 | `prop_SelectLast` | `regionSelectionLast` selects the last region | — | **gap** | `build(rs).last.current` is the final region |
-| 9 | `prop_UpdateToAny` | clicking inside *any* stripe selects exactly that region | — | **gap** | for every region, `update(stripe.midpoint).current` is that region |
-| 10 | `prop_UpdateToAll` | clicking every stripe in a shuffled order selects each one in turn | — | **gap** | repeated `update` across a shuffled region list never desynchronises the cursor |
-| 11 | `prop_ClickAlwaysInSelection` | after any sequence of up/down/first/last/update, `rsLastClick` lies inside the selected stripe | — | **gap** | the invariant that makes `clamp_around_selection` safe; the port's `last_click` is never asserted anywhere |
-| 12 | `prop_SelectWorks` | `regionSelectionSelect v` selects the region whose value is `v` | — | **gap** | `select(value)` finds a value held either before or after the cursor |
-| 13 | `prop_Append` | appending the tail to a selection over the head equals a selection over the whole list | — | **gap** | `build(head).append(tail) == build(head + tail)`; this is what makes live recording extend a diagram without losing the selection |
-| 14 | `prop_FlattenThenNewIsIdempotent` | `new (flatten rs) == rs` | — | **gap** | `RegionSelection.build(sel.flatten) == sel` |
+| # | Upstream test | Purpose | Port test | State |
+|---|---|---|---|---|
+| 15 | `testGroup "Disconnections…"`▸`"One participant, no disconnection"` | a service seen in the log is listed as a participant | `spec/renderer_spec.rb#lists one participant that does not disconnect` (:102) | ported |
+| 16 | …▸`"One participant, which disconnects"` | it is **still** listed when it disconnects before the log ends — a regression test for a bug the author says he almost introduced | `spec/renderer_spec.rb#lists one participant that disconnects before the log ends` (:107) | ported |
+| 17 | `testGroup "Incremential rendering…"`▸`rrCentreOffset` | rendering one message at a time and merging gives the same centre offset as rendering the lot | `spec/renderer_spec.rb#agrees on the centre offset` (:118) | ported |
+| 18 | …▸`rrTopOffset` | the same for the top offset — the log in this fixture has enough names to force a rejustification to the top, which is the case that breaks | `spec/renderer_spec.rb#agrees on the top offset` (:123) | ported |
+| 19 | …▸`rrShapes` | the same for the shape list, compared element by element before length | `spec/renderer_spec.rb#agrees on the shapes` (:128) | ported |
+| 20 | …▸`rrRegions` | the same for the clickable regions | `spec/renderer_spec.rb#agrees on the regions` (:132) | ported |
+| 21 | …▸`rrApplications` | the same for the participant set | `spec/renderer_spec.rb#agrees on the participants` (:136) | ported |
+| 22 | …▸`rrWarnings` | the same for the warnings | `spec/renderer_spec.rb#agrees on the warnings` (:141) | ported |
 
-These are *property* tests over generated inputs. Rows 1–14 each owe a Ruby
-test that generates region lists rather than hard-coding one, or the property
-is not being tested — a single hand-written example passes rows 9, 10 and 11
-by accident.
+Cases 17–22 are the tests the live recorder depends on: `Recorder#render`
+(`lib/bustle/recorder.rb:138-147`) merges one batch at a time onto the result so
+far, which is only sound while incremental and all-at-once rendering agree.
 
-## Suite: test-renderer (8 tests) — `Test/Renderer.hs` -> `Bustle::Renderer`
+## Suite: test-pcap-crash — `Test/PcapCrash.hs` (1 case)
 
-| # | Upstream test | Purpose | Port test | State | Behaviour still owed |
-|---|---|---|---|---|---|
-| 15 | `Disconnections…/One participant, no disconnection` | a service that sends a signal is listed as a participant | — | **gap** | `Renderer.process(log, []).applications.session_participants == [[:1.1, Set[]]]` |
-| 16 | `Disconnections…/One participant, which disconnects` | a service that **disconnects before the log ends** is *still* listed as a participant | — | **gap** | the same assertion with a trailing `Disconnected` NOC event; upstream calls this "a regression test for a bug I almost introduced", and `lib/bustle/renderer.rb:690` ("a departed participant keeps its column for the record") is exactly the code it guards |
-| 17 | `Incremental…/rrCentreOffset` | incremental `processSome` yields the same centre offset as one-shot `process` | — | **gap** | `process_some` fed one message at a time agrees with `process` on `centre_offset` |
-| 18 | `Incremental…/rrTopOffset` | same for the top offset | — | **gap** | …on `top_offset`, over a log long enough to force rejustification (upstream uses 26 well-known names for exactly this) |
-| 19 | `Incremental…/rrShapes` | same for the shape list | — | **gap** | …on `shapes`, compared as a list |
-| 20 | `Incremental…/rrRegions` | same for the region list | — | **gap** | …on `regions`, compared as a list |
-| 21 | `Incremental…/rrApplications` | same for the participant map | — | **gap** | …on `applications` |
-| 22 | `Incremental…/rrWarnings` | same for the warnings | — | **gap** | …on `warnings` |
+| # | Upstream test | Purpose | Port test | State |
+|---|---|---|---|---|
+| 23 | `Test/PcapCrash.hs`▸`main` | fd.o#44714 — `Test/data/log-with-h.bustle` contains a Unix file handle (`h`), which used to make `readPcap` call `error`. It must load **without raising**; upstream's own comment says it deliberately does *not* assert "no warnings", because `h` is skipped | `spec/pcap_loader_spec.rb#reads a log containing a file handle rather than raising` (:19) | ported |
 
-Rows 17–22 are the tests that make live recording possible at all: they pin
-that `processSome` is equivalent to `process`. The port implements
-`Renderer.process_some` and `Result#merge`/`shifted_shapes`/`shifted_regions`
-(`lib/bustle/renderer.rb:80`, `:155`, `:168`) with nothing asserting any of
-it, and no caller either — the recorder that would use it was not written.
-Six untested, unused, non-trivial code paths.
-
-## Suite: test-pcap-crash (1 test) — `Test/PcapCrash.hs` -> `Bustle::PcapLoader`
-
-| # | Upstream test | Purpose | Port test | State | Behaviour still owed |
-|---|---|---|---|---|---|
-| 23 | `Test/PcapCrash.hs` | fd.o#44714 — a log containing a Unix file handle (`h`) must load without raising; upstream's loader used to call `error` | — | **gap** | `PcapLoader.read_pcap(fixture)` returns rather than raising, for a log with an `h`-typed argument. Needs `Test/data/log-with-h.bustle` copied into the port |
-
-`lib/bustle/variant_formatter.rb` and `lib/bustle/pcap_loader.rb` both handle
-signatures; nothing checks that `h` survives. Upstream's own comment on this
-test notes it does not assert "no warnings", because `h` is skipped — so the
-port's test must assert *loads without raising*, not *loads cleanly*.
+The fixture travelled with it: `spec/fixtures/log-with-h.bustle`.
 
 ## Extra
 
-None. There is not one Ruby test in this repository, upstream-derived or
-otherwise.
+- `spec/pcap_loader_spec.rb#returns warnings and a log for that file` (:23) — one check on the shape of `read_pcap`'s return value. No upstream counterpart; outside the count.
 
-## Consequence
+## What is proven, and what is not
 
-The port is ~5,100 lines of `lib/`, including a 747-line layout engine, a
-536-line Cairo renderer, a 495-line pcap/D-Bus unmarshaller and a 220-line
-region-selection structure, **with zero automated checks of any kind**.
-Upstream wrote down 23 facts it considered worth pinning — including one
-explicit regression test for a real bug — and the port has inherited none of
-them. Parity is **0/23**.
+Of the four conditions this skill requires:
+
+- counts equal — **yes**, 23 and 23;
+- every ledger row has a named port test — **yes**;
+- every named test exists by that name in the port tree — **yes**, verified against the port census;
+- the suite passes under its own target — **not verified here, and claimed by
+  the port.** `bundle exec rspec` reports `bundler: command not found: rspec`,
+  `rspec` is not on `PATH` and `gem list rspec` is empty, so this audit never
+  executed the suite. `FINDINGS.md:30-34` states that "all 23 ported specs pass
+  against the real `lib/`", executed with "a throwaway RSpec stand-in, since
+  `rspec` itself is not installed". That is a claim by the party being audited,
+  made with a harness that is not in the repository and cannot be re-run, over
+  a suite whose real runner has never been used on it. It is recorded, not
+  accepted. Parity is 23/23 **on the census**; "23/23, green" is not a thing
+  this report can say.
+
+The same environment limit removes the one check that would have caught the
+`component-parity.md` gaps cheapest: `spec/` contains no widget spec at all, so
+the three `ruby-gtk-testing` drives that would exercise the canvas's step
+increment, the error bar's styling and the filter list could not have been
+written here either.
+
+Upstream's suite is small for a 7,500-line app: the renderer, the region
+selection and one pcap regression. Nothing upstream pins the UI, the monitor,
+the statistics or the loader's name-ownership tracking — so the gaps in
+`component-parity.md` (the monitor's missing `ListNames`/`GetNameOwner`, the
+pkexec exit codes, the `bustle-pcap` option grammar) were never going to be
+caught by a green suite, upstream's or this one.

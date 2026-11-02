@@ -2,163 +2,227 @@
 
 | | |
 |---|---|
-| Upstream | `origin/master` @ `0a8cf38` (Bustle 0.7.x, Haskell + gtk2hs, GTK 3) |
-| Port | `ruby` @ `04031bc` (Ruby GTK4 + Libadwaita) |
-| Upstream declarative UI | `data/bustle.ui`, `data/OpenTwoDialog.ui`, `data/RecordAddressDialog.ui` |
+| Upstream | `master` @ `0a8cf38` (Haskell + GTK3 + GtkBuilder) |
+| Port | `ruby` @ `16f6787` (Ruby + GTK4 + Libadwaita) |
+| Scanned with | `.claude/skills/component-identification/scripts/component-scan.sh` |
+| Upstream rows | 45 across 3 `.ui` files (the Haskell builds almost nothing directly) |
+| Port rows | 109 across `lib/bustle/*.rb` |
 
-`.reports/component-inventory.md` holds the full upstream-side inventory
-(written when the `ruby` branch was three skeleton files). This document is the
-*current* identification pass over both sides and supersedes that file's "State
-of the `ruby` branch" section, which is now stale.
+Upstream has declarative UI, so Step 1 applies: `data/bustle.ui` (925 lines),
+`data/OpenTwoDialog.ui` (133), `data/RecordAddressDialog.ui` (111) **are** the
+inventory, and the Haskell pulls widgets out of them by id with
+`builderGetObject`. There are no `<template>` roots — every root is a top-level
+named object (`diagramWindow`, `openTwoDialog`, `recordAddressDialog`, plus the
+three `GtkMenu`s), which is the unit list.
 
-## Whole-app scan (Step 3, `component-scan.sh`)
+The port has no `.ui` files, by design: widgets are memoized methods per the
+`ruby-gtk` skill.
 
-| Axis | Upstream distinct | Port distinct | In upstream, not in port |
-|---|---:|---:|---:|
-| Widget types | 26 | 25 | 16 |
-| Controllers | 0 | 2 | 0 |
-| Non-widget GTK types | 1 | 7 | 1 |
-| CSS classes | 7 | 6 | 5 |
-| Signals connected | 2 | 8 | 2 |
-| GActions | 0 | 1 | 0 |
+**Upstream is GTK3.** `Gtk.Menu`, `Gtk.ImageMenuItem`, `Gtk.CheckMenuItem`,
+`Gtk.SeparatorMenuItem`, `Gtk.Table`, `Gtk.Layout`, `Gtk.InfoBar`,
+`Gtk.ButtonBox` and `Gtk.FileChooserButton` have no GTK4 counterpart, so the
+widget stream cannot be diffed on type. Every one of them is recorded below as
+a substitution with the port's replacement named, and the comparison is carried
+on the CSS, signal, action and text axes in `component-parity.md`.
 
-Read the signal row with Step 4 in hand, not on its own. Upstream's two scanned
-signals are `message-logged` and `stopped` — the two signals of
-`Bustle/Monitor.hs`, the live recorder — and **both are missing**, because the
-port has no recorder at all. Everything else upstream connects is a
-`GtkMenuItem::activate` or a GTK3 `*-event` in Haskell source the scanner
-cannot see, so the "8 vs 2" is an artifact, not a win.
+## File mapping
 
-Most of the 16 missing widget types are GTK3 widgets with no GTK4 counterpart
-and are correspondences, not gaps (per `component-parity` Step 3):
-`Gtk.Layout` → `Gtk::DrawingArea`, `Gtk.InfoBar` → `Adwaita::Banner`,
-`Gtk.Menu`/`Gtk.MenuItem`/`Gtk.ImageMenuItem`/`Gtk.CheckMenuItem`/`Gtk.SeparatorMenuItem`
-→ `Gio::Menu` + `Gio::SimpleAction`, `Gtk.FileChooserButton`/`Gtk.Dialog` →
-`Gtk::FileDialog`/`Adwaita::Window`, `Gtk.Table`/`Gtk.Grid` →
-`Adwaita::PreferencesGroup`, `Gtk.ButtonBox` → header-bar packing,
-`Gtk.HeaderBar` → `Adwaita::HeaderBar`, `Gtk.Image` → `Adwaita::StatusPage`
-`icon-name`, `Gtk.Window` → `Adwaita::ApplicationWindow`.
+```
+Bustle/UI.hs + data/bustle.ui▸diagramWindow      -> lib/bustle/window.rb
+                                                  + lib/bustle/header_bar.rb
+                                                  + lib/bustle/error_bar.rb
+                                                  + lib/bustle/welcome_page.rb
+                                                  + lib/bustle/please_hold_page.rb
+                                                  + lib/bustle/pdf_export.rb
+                                                  + lib/bustle/open_dialog.rb
+data/bustle.ui▸openMenu/recordMenu/filterStatsEtc -> lib/bustle/menus.rb
+Bustle/UI/Canvas.hs + bustle.ui▸diagramLayout     -> lib/bustle/canvas.rb
+Bustle/UI/DetailsView.hs + bustle.ui▸detailsGrid  -> lib/bustle/details_view.rb
+Bustle/StatisticsPane.hs + bustle.ui▸sidebarStack -> lib/bustle/statistics_pane.rb
+Bustle/UI/FilterDialog.hs                         -> lib/bustle/filter_dialog.rb
+Bustle/UI/OpenTwoDialog.hs + OpenTwoDialog.ui     -> lib/bustle/open_two_dialog.rb
+Bustle/UI/RecordAddressDialog.hs
+                   + RecordAddressDialog.ui       -> lib/bustle/record_address_dialog.rb
+Bustle/UI/AboutDialog.hs                          -> lib/bustle/about_dialog.rb
+Bustle/UI/Recorder.hs + UI.hs▸recording half      -> lib/bustle/recorder.rb
+Bustle/Monitor.hs + c-sources/pcap-monitor.c      -> lib/bustle/monitor.rb
+c-sources/bustle-pcap.c                           -> lib/bustle/pcap_cli.rb + exe/bustle-pcap
+Bustle.hs                                         -> lib/bustle/main.rb + exe/bustle
+Bustle/Application/Monad.hs + UI.hs▸uiMain/mainB  -> lib/bustle/application.rb
+Bustle/Noninteractive.hs                          -> lib/bustle/noninteractive.rb
+Bustle/{Renderer,Diagram,Regions,Stats,Types,
+  Marquee,Missing,Util,VariantFormatter,Loader,
+  Loader/Pcap,Translation}.hs                     -> the same-named lib/bustle/*.rb
+```
 
-**`Gtk.Entry` is a real absence**: its only upstream instance is
-`recordAddressEntry` in `data/RecordAddressDialog.ui`, and that dialog has no
-port file.
+Every upstream source file has a port file opposite it. There is no unit-level
+hole; the gaps found are inside units.
 
-Missing CSS classes: `destructive-action` is a real absence (upstream's
-`headerStop`, which the port has no button for). `image-button`,
-`text-button`, `title` and `subtitle` are GTK3 header-bar idioms subsumed by
-`Adwaita::HeaderBar` + `Adwaita::WindowTitle` — correspondences.
+## Unit: main window — `bustle.ui`▸`diagramWindow` + `Bustle/UI.hs`
 
-## Unit list and file mapping
-
-The unit is the Haskell module plus whichever `data/*.ui` objects it pulls out
-by id (upstream has no named templates; `builderGetObject` by id is the join).
-
-| # | Unit | Upstream | Port |
-|---:|---|---|---|
-| 1 | CLI | `Bustle.hs` | `lib/bustle/main.rb` |
-| 2 | application | `Bustle/UI.hs` (`uiMain`/`mainB`), `Bustle/Application/Monad.hs` | `lib/bustle/application.rb` |
-| 3 | main window | `Bustle/UI.hs` + `bustle.ui`▸`diagramWindow` | `lib/bustle/window.rb` |
-| 4 | header bars | `bustle.ui`▸`header`,`headerPaned`,`sidebarHeader` | `lib/bustle/header_bar.rb` |
-| 5 | menus / actions / accels | `bustle.ui`▸`recordMenu`,`openMenu`,`filterStatsEtc` | `lib/bustle/menus.rb` |
-| 6 | welcome page | `bustle.ui`▸`InstructionsPage` | `lib/bustle/welcome_page.rb` |
-| 7 | please-hold page | `bustle.ui`▸`PleaseHoldPage` | `lib/bustle/please_hold_page.rb` |
-| 8 | error bar | `bustle.ui`▸`errorBar` | `lib/bustle/error_bar.rb` |
-| 9 | canvas | `Bustle/UI/Canvas.hs` + `bustle.ui`▸`diagramLayout` | `lib/bustle/canvas.rb` |
-| 10 | details view | `Bustle/UI/DetailsView.hs` + `bustle.ui`▸`detailsGrid` | `lib/bustle/details_view.rb` |
-| 11 | statistics pane | `Bustle/StatisticsPane.hs` + `bustle.ui`▸`sidebarStack` | `lib/bustle/statistics_pane.rb` |
-| 12 | filter dialog | `Bustle/UI/FilterDialog.hs` | `lib/bustle/filter_dialog.rb` |
-| 13 | open-pair dialog | `Bustle/UI/OpenTwoDialog.hs` + `OpenTwoDialog.ui` | `lib/bustle/open_two_dialog.rb` |
-| 14 | about dialog | `Bustle/UI/AboutDialog.hs` | `lib/bustle/about_dialog.rb` |
-| 15 | open dialog | `Bustle/UI.hs`▸`showOpenDialog` | `lib/bustle/open_dialog.rb` |
-| 16 | PDF save dialog | `Bustle/UI.hs`▸`saveToPDFDialogue` | `lib/bustle/pdf_export.rb` |
-| 17 | batch modes | `Bustle/Noninteractive.hs` | `lib/bustle/noninteractive.rb` |
-| 18 | **record-address dialog** | `Bustle/UI/RecordAddressDialog.hs` + `RecordAddressDialog.ui` | **— none** |
-| 19 | **recorder** | `Bustle/UI/Recorder.hs` (`recorderRun`, `recorderChooseFile`) | **— none** |
-| 20 | **monitor** | `Bustle/Monitor.hs` + `c-sources/pcap-monitor.c` | **— none** |
-| 21 | **save / prompt-to-save** | `Bustle/UI.hs`▸`showSaveDialog`, `promptToSave` | **— none** |
-| 22 | **`bustle-pcap` CLI** | `c-sources/bustle-pcap.c` | **— none** |
-
-Backend modules (`Types`, `Loader`, `Loader/Pcap`, `Renderer`, `Diagram`,
-`Regions`, `Stats`, `Marquee`, `VariantFormatter`, `Missing`, `Util`,
-`Translation`) all have a port file of the same name. 17 of 22 UI/CLI units
-have a counterpart; **5 have none**, and unit 5 is only half built.
-
-## Per-unit inventory, upstream side
-
-### `bustle.ui`▸`diagramWindow` + `Bustle/UI.hs` — the only window
-
-| Widget | × | id / CSS | Signals | Notes |
+| Widget | × | CSS / name | Signals & actions | Port counterpart |
 |---|---:|---|---|---|
-| `Gtk.Window` | 1 | `diagramWindow` | `destroy`→`maybeQuit`, `delete-event`→`promptToSave` | 900×700 |
-| `Gtk.Paned` | 3 | `headerPaned`, `sidebarPaned`, `contentPaned` | — | `headerPaned` position bound bidirectionally to `sidebarPaned` |
-| `Gtk.HeaderBar` | 2 | `header`, `sidebarHeader` | — | `GtkSizeGroup` ties `sidebarHeader` to `sidebarStack` |
-| `Gtk.StackSwitcher` | 1 | title of `sidebarHeader` | — | Frequencies/Durations/Sizes |
-| `Gtk.MenuButton` | 3 | `headerRecord` (`text-button image-button suggested-action`, 100px, `_Record`, `media-record-symbolic`), `headerOpen` (`image-button`), hamburger (`image-button`, `open-menu-symbolic`) | — | popups `recordMenu`, `openMenu`, `filterStatsEtc` |
-| `Gtk.Button` | 3 | `headerStop` (`destructive-action`, `_Stop`), `headerExport` (`image-button`, `document-send-symbolic`, tooltip "Export as PDF", insensitive), `headerSave` (`image-button`, `document-save-symbolic`, tooltip "Save", insensitive, `Ctrl+S`) | `clicked` | Record+Open hide while recording; Stop shows and takes focus |
-| `Gtk.Spinner` | 1 | `headerSpinner` | — | started/stopped around recording |
-| `Gtk.Label` | 2 | `headerTitle` (`title`), `headerSubtitle` (`subtitle`) | — | markup; subtitle is `Logged <b>%u</b> messages` while recording |
-| `Gtk.Stack` | 1 | `diagramOrNot` | — | `InstructionsPage`/`PleaseHoldPage`/`CanvasPage` |
-| `Gtk.SizeGroup` | 1 | — | — | not a widget |
+| `Gtk.Window` `diagramWindow` | 1 | — | `delete-event`→`promptToSave`, `destroy`→`maybeQuit` | `Gtk::ApplicationWindow`, `window.rb:205` (`Adwaita::ApplicationWindow` is broken in the bindings) |
+| `Gtk.Paned` `headerPaned` | 1 | — | — | folded into `Adwaita::ToolbarView` + `sidebar_paned`, `window.rb:213,236` |
+| `Gtk.HeaderBar` `header` | 1 | — | — | `Adwaita::HeaderBar`, `header_bar.rb:97` |
+| `Gtk.HeaderBar` `sidebarHeader` | 1 | — | shown/hidden by Statistics | `header_bar.rb:99` |
+| `Gtk.StackSwitcher` | 1 | — | — | `header_bar.rb:106` |
+| `Gtk.MenuButton` `headerRecord` | 1 | `text-button`, `image-button`, `suggested-action` | `recordMenu` | `header_bar.rb:142`, `suggested-action` + `Adwaita::ButtonContent` |
+| `Gtk.Button` `headerStop` | 1 | `destructive-action` | `buttonActivated`→`monitorStop` | `header_bar.rb:159` |
+| `Gtk.MenuButton` `headerOpen` | 1 | `image-button` | `openMenu` | `header_bar.rb:168` |
+| `Gtk.MenuButton` (main menu) | 1 | `image-button` | `filterStatsEtc` | `header_bar.rb:192` |
+| `Gtk.Button` `headerSave` | 1 | `image-button` | `Ctrl+S`, `showSaveDialog` | `header_bar.rb:176`, `win.save` |
+| `Gtk.Button` `headerExport` | 1 | `image-button` | `saveToPDFDialogue` | `header_bar.rb:184`, `win.export-pdf` |
+| `Gtk.Spinner` `headerSpinner` | 1 | — | `spinnerStart`/`Stop` | `header_bar.rb:136` |
+| `Gtk.Label` `headerTitle` | 1 | `title` | `labelSetMarkup` | `header_bar.rb:116` |
+| `Gtk.Label` `headerSubtitle` | 1 | `subtitle` | `labelSetMarkup` | `header_bar.rb:125` |
+| `Gtk.InfoBar` `errorBar` | 1 | `message_type=error`, `show_close_button` | `infoBarResponse`→hide | `Adwaita::Banner`, `error_bar.rb:50` — **style not carried** |
+| `Gtk.Label` `errorBarTitle` | 1 | `selectable`, `use_markup`, `wrap` | — | banner title, `error_bar.rb:50` — **not selectable** |
+| `Gtk.Label` `errorBarDetails` | 1 | `selectable`, `use_markup`, `wrap` | shown only when there are details | `error_bar.rb:57` — **not selectable** |
+| `Gtk.Stack` `diagramOrNot` | 1 | pages `InstructionsPage`/`PleaseHoldPage`/`CanvasPage` | `stackSetVisibleChildName` | `window.rb:217` |
+| `Gtk.Paned` `sidebarPaned` | 1 | — | — | `window.rb:236` |
+| `Gtk.Paned` `contentPaned` | 1 | — | — | `diagram_paned`, `window.rb:243` |
+| `Gtk.SizeGroup` (unnamed, `:919`) | 1 | horizontal, over `sidebarHeader` + `sidebarStack` | — | `window.rb:237` |
 
-Accelerators (all `GtkMenuItem::activate` + `<accelerator>`, no GAction
-anywhere): `Ctrl+F` filter, `F9` statistics, `Ctrl+O` open, `Ctrl+E` record
-session bus, `Ctrl+Y` record system bus, `Ctrl+A` record address, `Ctrl+S` save
-log.
+Repeaters: none. Conditional: `headerStop` visible only while recording;
+`sidebarStack`/`sidebarHeader` only when Statistics is ticked; `errorBarDetails`
+only when a secondary message exists.
 
-### `bustle.ui`▸`recordMenu`, `openMenu`, `filterStatsEtc`
+## Unit: welcome page — `bustle.ui`▸`InstructionsPage`
 
-| Menu | Items |
-|---|---|
-| `recordMenu` | `Record S_ession Bus` (Ctrl+E), `Record S_ystem Bus` (Ctrl+Y), `Record _Address…` (Ctrl+A) |
-| `openMenu` | `gtk-open` (Ctrl+O), `O_pen a Pair of Logs…` |
-| `filterStatsEtc` | `_Filter Visible Services…` (Ctrl+F, insensitive until a log loads), `_Statistics` check item (F9, same), separator, `gtk-about` |
+| Widget | × | CSS | Port |
+|---|---:|---|---|
+| `Gtk.Box` (valign center) | 1 | — | `Adwaita::StatusPage`, `welcome_page.rb:20` |
+| `Gtk.Image` | 1 | `dim-label`, icon `org.freedesktop.Bustle-symbolic` | status-page `icon_name`, `welcome_page.rb:22` |
+| `Gtk.Label` "Welcome to Bustle" | 1 | `dim-label`, weight bold, scale 2 | status-page `title`, `welcome_page.rb:23` |
+| `Gtk.Label` instructions | 1 | `dim-label`, markup | `welcome_page.rb:31` |
 
-### `RecordAddressDialog.ui` + `Bustle/UI/RecordAddressDialog.hs`
+## Unit: please-hold page — `bustle.ui`▸`PleaseHoldPage`
 
-| Widget | × | id | Signals | Notes |
-|---|---:|---|---|---|
-| `Gtk.Dialog` | 1 | `recordAddressDialog` | `response` | title "Record Address", destroyed on response |
-| `Gtk.Label` | 1 | — | — | "Address:" |
-| `Gtk.Entry` | 1 | `recordAddressEntry` | `changed` → Record sensitivity | placeholder `e.g. unix:abstract=/tmp/dbus-E5RlEB5Tzu,guid= b1c1921b62283b7b612b57305b20cc28` (comment: "Just translate the 'e.g.'") |
-| `Gtk.Button` | 2 | `recordAddressCancel`, `recordAddressRecord` | `clicked` | `_Record` insensitive while the entry is empty |
+One `Gtk.Label` with its markup inside the msgid. Port adds a `Gtk::Spinner`
+(`please_hold_page.rb:51`) — an **explained extra**: upstream's spinner for
+this state lives in the header bar, and the port keeps that one too, so the
+state has two spinners where upstream has one.
 
-### `Bustle/UI/Recorder.hs` — the recording flow
+## Unit: statistics sidebar — `StatisticsPane.hs` + `bustle.ui`▸`sidebarStack`
 
-Not a `.ui` file; a sequence. `recorderRun` opens a `Bustle.Monitor` on a bus
-(or address), writes pcap frames to a temp file under `getCacheDir`, pumps
-`message-logged` through `processSome` into the canvas, scrolls to the bottom,
-counts messages into the header subtitle, and on `stopped` presents
-`recorderChooseFile` — a `GtkFileChooserDialog` in Save mode with
-`gtk-cancel`/`gtk-new` — then moves the temp file to the chosen path. On
-failure it warns `You might want to manually recover the log from the
-temporary file at \"%s\".`
+| Widget | × | Detail | Port |
+|---|---:|---|---|
+| `Gtk.Stack` `sidebarStack` | 1 | 3 titled pages: Frequencies, Durations, Sizes | `statistics_pane.rb:112` |
+| `Gtk.ScrolledWindow` | 3 | `frequencySW`, `durationSW`, `sizeSW` | `statistics_pane.rb:120-124` |
+| `Gtk.TreeView` | 3 | headers visible, `ListStore`-backed | `Gtk::ColumnView` ×3 + `Gio::ListStore` ×3, `statistics_pane.rb:126-134` |
+| `Gtk.CellRendererText` | 10 | all at `cellTextSizePoints := 7` | one `Gtk::Label` per cell factory; the 7pt is re-expressed as CSS, `statistics_pane.rb:37-41` |
+| `Gtk.CellRendererToggle` | 0 | — | — |
+| `Gtk.CellRendererProgress` | 1 | `2 + count*98/max`, text = count | `Gtk::ProgressBar`, `statistics_pane.rb:265` |
+| columns | 10 | Member/Frequency; Method/Total/Calls/Mean; Member/Smallest/Mean/Largest | 10, `statistics_pane.rb:136-186` |
 
-### `Bustle/UI.hs`▸`promptToSave` / `showSaveDialog`
+## Unit: details pane — `DetailsView.hs` + `bustle.ui`▸`detailsGrid`
 
-`GtkMessageDialog` (warning) — `Save log '%s' before closing?` /
-`If you don't save, this log will be lost forever.`, buttons
-`Close _Without Saving` / Cancel / Save — wired to `delete-event`; plus a Save
-`GtkFileChooserDialog` and the `Couldn't save log: ` error path.
+| Widget | × | name / CSS | Port |
+|---|---:|---|---|
+| `Gtk.Grid` `detailsGrid` | 1 | — | `Gtk::Box` + `Adwaita::PreferencesGroup`, `details_view.rb:57,67` |
+| `Gtk.Label` captions | 6 | `dim-label` — Type, Path, Member, Arguments, Sender, Destination | 5 `Adwaita::ActionRow` titles + 1 `heading` label, `details_view.rb:69-82` |
+| `Gtk.Label` values | 4 | names `detailsPath`, `detailsMember`, `detailsSender`, `detailsDestination` | the rows' subtitles, `subtitle_selectable`, `details_view.rb:179-186` |
+| `Gtk.Stack` `detailsType` | 1 | 5 pages: `methodCall`, `methodReturn`, `error`, `signal`, `directedSignal` | collapsed to one row subtitle, `details_view.rb:122-133` |
+| `Gtk.TextView` `detailsArguments` | 1 | monospace body | `details_view.rb:94` |
+| `Gtk.ScrolledWindow` | 1 | — | `details_view.rb:86` |
 
-## Port side, as built
+Conditional: `detailsDestination` + `detailsDestinationCaption` hidden for a
+broadcast signal (`DetailsView.hs:106-112`); the port hides the whole row
+(`details_view.rb:118`).
 
-| Port file | Root widget | CSS applied | Behaviour wired |
+## Unit: canvas — `UI/Canvas.hs` + `bustle.ui`▸`diagramLayout`
+
+| Widget / controller | × | Behaviour | Port |
+|---|---:|---|---|
+| `Gtk.Layout` `diagramLayout` | 1 | hand-translated Cairo, partial invalidation | `Gtk::DrawingArea` in a `Gtk::ScrolledWindow`, `canvas.rb:79,86` |
+| `keyPressEvent` ×2 | 2 | Left/Right = one step, space = one page, Up/Down/Home/End = move selection | `Gtk::EventControllerKey`, `canvas.rb:93,113-125` |
+| `buttonPressEvent` | 1 | left button only, grab focus, select by y | `Gtk::GestureClick` button 1, `canvas.rb:93,44` |
+| `draw` | 1 | highlight stripe then shapes, clipped to the visible rect | `canvas.rb:41,184` |
+| `Gtk.Adjustment` | 2 | **step increment set to `eventHeight`** (`Canvas.hs:102-103`) | **no counterpart** — `canvas.rb:131` reads the default |
+
+## Unit: filter dialog — `UI/FilterDialog.hs`
+
+| Widget | × | Detail | Port |
+|---|---:|---|---|
+| `Gtk.Dialog` | 1 | no title, parent·7/8 × parent/2 | `Adwaita::Window`, `filter_dialog.rb:68` |
+| Close button | 1 | `stockClose`; closing applies the filter | `filter_dialog.rb:80`, `suggested-action` |
+| `Gtk.Label` instructions | 1 | markup, size request 600×−1 | `filter_dialog.rb:96` — no size request |
+| `Gtk.TreeView` | 1 | **rules hint on**, headers off, size request 600×371 | `Gtk::ListBox` `boxed-list`, `filter_dialog.rb:114` — none of the three |
+| `Gtk.CellRendererToggle` | 1 | per-row tick | `Gtk::CheckButton` per row, `filter_dialog.rb:170` |
+| `Gtk.CellRendererText` | 1 | `formatNames`: `ns{A,B}` brace compression | `filter_dialog.rb:120-155` |
+| `Gtk.ScrolledWindow` | 1 | policy automatic/automatic | `filter_dialog.rb:104` |
+
+## Unit: open-a-pair dialog — `OpenTwoDialog.ui` + `.hs`
+
+| Widget | × | Behaviour | Port |
+|---|---:|---|---|
+| `Gtk.Dialog` `openTwoDialog` | 1 | `delete-event` hides and is reused | `Adwaita::Window`, rebuilt per activation, `open_two_dialog.rb:62` |
+| `Gtk.FileChooserButton` | 2 | `file-set`→sensitivity; `current-folder-changed`→propagate both ways | `Gtk::Button` + `Gtk::FileDialog` ×2, `open_two_dialog.rb:186`; folder propagated only on a chosen file |
+| `Gtk.Button` cancel / open | 2 | Open insensitive until both chosen | `open_two_dialog.rb:79,83` |
+| `Gtk.Table` + 2 `Gtk.Label` | 3 | "Session bus log:", "System bus log:" | `Adwaita::PreferencesGroup` + 2 `ActionRow`, `open_two_dialog.rb:93,105` |
+
+## Unit: record-address dialog — `RecordAddressDialog.ui` + `.hs`
+
+| Widget | × | Behaviour | Port |
+|---|---:|---|---|
+| `Gtk.Dialog` | 1 | title "Record Address" | `Adwaita::Window`, `record_address_dialog.rb` |
+| `Gtk.Entry` | 1 | `placeholder_text` (translator comment: translate only "e.g."); `changed`→Record sensitivity | `Adwaita::EntryRow`; placeholder re-expressed as the group description |
+| `Gtk.Button` record / cancel | 2 | Record insensitive while empty | `record_address_dialog.rb:91` |
+
+## Unit: menus and shortcuts — the three `GtkMenu`s
+
+| Item | Accel | Upstream | Port action |
 |---|---|---|---|
-| `window.rb` | `Adwaita::ApplicationWindow` → `Adwaita::ToolbarView` → `Gtk::Box` → `Gtk::Stack` → `Gtk::Paned`(h) → `Gtk::Paned`(v) | — | 6 window actions |
-| `header_bar.rb` | `Adwaita::HeaderBar` ×2, `Adwaita::WindowTitle`, `Gtk::StackSwitcher`, `Gtk::MenuButton` ×2, `Gtk::Button` ×1 | — | menu models + `win.export-pdf` |
-| `menus.rb` | `Gio::Menu` ×4, `Gio::SimpleAction` ×6 | — | `open`, `open-pair`, `filter`, `export-pdf`, `about`, `statistics` |
-| `welcome_page.rb` | `Adwaita::StatusPage` + markup `Gtk::Label` | `dim-label` | — |
-| `please_hold_page.rb` | `Adwaita::StatusPage` + `Gtk::Spinner` | — | built, **never shown** |
-| `error_bar.rb` | `Gtk::Box` → `Adwaita::Banner` + `Gtk::Label` | `dim-label` | `button-clicked` |
-| `canvas.rb` | `Gtk::ScrolledWindow` → `Gtk::DrawingArea` | — | `GestureClick` `pressed`, `EventControllerKey` `key-pressed` |
-| `details_view.rb` | `Gtk::Box` → `Adwaita::PreferencesGroup` (5 `Adwaita::ActionRow`) + `Gtk::TextView` | `heading`, `property` | `update(message)` |
-| `statistics_pane.rb` | `Gtk::Stack` → 3 `Gtk::ScrolledWindow` → 3 `Gtk::ColumnView` (10 columns, `SignalListItemFactory`) | `data-table`, `dim-label` | setup/bind |
-| `filter_dialog.rb` | `Adwaita::Window` → `Adwaita::ToolbarView` → `Gtk::ListBox` of `Adwaita::ActionRow` + `Gtk::CheckButton` | `boxed-list`, `suggested-action` | `clicked`, `close-request` |
-| `open_two_dialog.rb` | `Adwaita::Window` → `Adwaita::PreferencesGroup` (2 `Adwaita::ActionRow` + buttons) | `suggested-action` | `clicked` ×4 |
-| `about_dialog.rb` | `Gtk::AboutDialog` | — | — |
-| `open_dialog.rb`, `pdf_export.rb` | `Gtk::FileDialog` | — | async callback |
+| `_Filter Visible Services…` | `Ctrl+F` | `filter` `GtkMenuItem` | `win.filter` |
+| `_Statistics` | `F9` | `statistics` `GtkCheckMenuItem` | `win.statistics` (stateful boolean) |
+| About | — | `about` `GtkImageMenuItem` (`gtk-about`) | `win.about`, msgid `_About Bustle` |
+| Open | `Ctrl+O` | `open` `GtkImageMenuItem` (`gtk-open`) | `win.open`, msgid `_Open…` |
+| `O_pen a Pair of Logs…` | — | tooltip "Display two logs—…" | `win.open-pair`; tooltip became the group description |
+| `Record S_ession Bus` | `Ctrl+E` | | `win.record-session` |
+| `Record S_ystem Bus` | `Ctrl+Y` | | `win.record-system` |
+| `Record _Address…` | `Ctrl+A` | | `win.record-address` |
+| Save | `Ctrl+S` | on `headerSave` | `win.save` |
+| Export | — | none upstream | `win.export-pdf` |
+| separator | — | 1 `GtkSeparatorMenuItem` | section boundary in `main_menu` |
 
-Repeaters: `statistics_pane` builds one row per `Stats::*Info`;
-`filter_dialog` one row per participant. Conditional: `details_view`'s
-destination row hides for a broadcast signal; `error_bar`'s details label
-hides when there are none.
+All 7 upstream accelerators are present (`menus.rb:30-40,46`). Upstream's
+`GtkMenu`/`GtkMenuItem` tree becomes `Gio::Menu` + window actions — upstream's
+own comment at `UI.hs:534-538` says that is the rewrite it wanted.
+
+## Unit: application and CLI
+
+| Upstream | Port |
+|---|---|
+| `uiMain`/`mainB`, `windows` counter, `maybeQuit` | `application.rb:35-40`; `Gtk::Application` does the counting |
+| `initialWindow` / `consumeInitialWindow` / `putInitialWindow` | `application.rb:53-68` |
+| `[LOGFILE …]`, `--pair`, `--debug`, `--help` | `main.rb:19-30,60-70` |
+| `--count` / `--time` / `--dot` | `noninteractive.rb:17,34,51` |
+| `bustle-pcap` `-e -y -a -v -q -V -h` + one FILENAME | `pcap_cli.rb:56-66` |
+
+## Scan-level totals
+
+| Axis | Upstream distinct | Port distinct (`lib/`) |
+|---|---:|---:|
+| Widget types | 26 | 28 |
+| CSS classes | 9 | 12 |
+| Signals | 1 (the rest are in Haskell, which the scanner cannot read) | 14 |
+| Actions | 0 | 11 |
+
+The upstream signal count is a scanner limit, not a finding: upstream wires
+every handler in Haskell with `on`/`onMenuItemActivate`, which
+`component-scan.sh` does not match. Every upstream signal in the tables above
+was read off the source by hand.
+
+## Stylesheet
+
+Neither tree ships a `.css` file. Upstream styles entirely with platform
+classes plus GtkBuilder `<property name="name">` element names
+(`errorBarTitle`, `detailsPath`, `detailsMember`, `detailsArguments`, and the
+five `detailsType` page names) which no stylesheet ever defines — they are
+dead. The port adds one stylesheet, a Ruby heredoc at
+`statistics_pane.rb:37-41` loaded with `provider.load(data:)`, carrying the one
+rule that replaces `cellTextSizePoints := 7`. The port also attaches
+`property` (`details_view.rb:184`) and `data-table`
+(`statistics_pane.rb:206`), both libadwaita platform classes, so neither needs
+a rule.

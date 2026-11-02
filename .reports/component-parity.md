@@ -2,152 +2,79 @@
 
 | | |
 |---|---|
-| Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `04031bc` |
-| Units with parity | **5 / 22** |
-| Units absent entirely | 5 |
+| Upstream | `master` @ `0a8cf38` |
+| Port | `ruby` @ `16f6787` |
+| Units compared | 12 / 12 |
+| Units with parity | 4 / 12 |
+| Gaps | 12 |
 
-Units with parity: welcome page, error bar, about dialog, open dialog,
-batch modes. Everything else below has at least one gap.
+Upstream is GTK3 and the port is GTK4/Libadwaita, so the widget axis cannot be
+compared on type for nine upstream classes that GTK4 deleted. Each is recorded
+as a located substitution in `component-identification.md` and the weight of
+the comparison falls on the CSS, signal/action and text axes.
+
+**Step 5 was not run.** Nothing below was driven: the port's `rspec` is not
+installed in this environment (`bundler: command not found: rspec`), and no
+unit was screenshotted. Every verdict here is from reading both sources. A
+`parity` verdict in this ledger therefore means "the four axes agree in the
+source", not "the behaviour was observed firing" — which is a weaker claim than
+this skill asks for, and the difference is mine to close, not to describe.
 
 ---
 
-## Unit: CLI — `Bustle.hs` -> `lib/bustle/main.rb`
+## Unit: live recording / monitor — `Bustle/Monitor.hs` + `c-sources/pcap-monitor.c` -> `lib/bustle/monitor.rb`
 
-| Facet | Upstream | Port | Verdict |
+| Behaviour | Upstream | Port | Verdict |
 |---|---|---|---|
-| `[LOGFILE…]` | one window per log | same | parity |
-| `--pair S Y` | one window, two logs | same | parity |
-| `--count/--time/--dot` | exactly one log | same | parity |
-| `--help` | usage to stderr, exit 0 | same | parity |
-| `--debug` | draw shape bounds | same | parity |
+| spawn `dbus-monitor --pcap` | `pcap-monitor.c:797-798` | `monitor.rb:156` | parity |
+| `pkexec` for the system bus | `pcap-monitor.c:794-795` | `monitor.rb:153-155` | parity |
+| `flatpak-spawn --host` in a sandbox | `pcap-monitor.c:788-792` | `monitor.rb:150-152`, `/.flatpak-info` | parity |
+| `--session` / `--system` / `--address ADDR` | `pcap-monitor.c:802-815` | `monitor.rb:161-167` | parity |
+| frames copied verbatim to the log | `pcap_dump()` | `monitor.rb:193-195` | parity |
+| `message-logged` / `stopped` signals | `Monitor.hs:112-137` | `monitor.rb:36-37,88` | parity |
+| **seed well-known-name ownership** | `pcap-monitor.c:415-456` `list_all_names` — `ListNames`, then one `GetNameOwner` per well-known name, on a second connection, *"just used by the UI to fill in the initial owners of each well-known name"* (`:445-447`); dispatched from `dump_names_thread_func` (`:496-556`) | **nothing.** `monitor.rb` opens no D-Bus connection and makes no calls | **gap** |
+| **own `org.freedesktop.Bustle.Monitor.<unique>`** | `pcap-monitor.c:31`, `:530` — so the viewer can hide the monitor's own connection | **nothing**; `monitor.rb:16-19` records the omission with a reason | **gap** |
+| **pkexec dialog dismissed (exit 126)** | `pcap-monitor.c:326-332` → `G_IO_ERROR_CANCELLED`, "User dismissed polkit authorization dialog", which `UI.hs:326-331` then *swallows* | `monitor.rb:271-278` never reads the exit status; reports `IO_ERROR_FAILED` with raw stderr | **gap** |
+| **not authorized (exit 127)** | `pcap-monitor.c:333-339` → `G_IO_ERROR_PERMISSION_DENIED`, "Not authorized to monitor system bus" | same — no mapping | **gap** |
+| **clean exit (0) = bus shut down** | `pcap-monitor.c:343-352` → treated as cancellation, no error shown | reported as a failure | **gap** |
+| libpcap errors preferred over subprocess errors | `pcap-monitor.c:355-372` | no precedence; whichever fires first | **gap** |
 
-Usage text is not translated upstream either. **parity**, with one caveat
-recorded under the window unit: upstream's usage block does not advertise
-recording because recording is reached from the UI, so the CLI's silence is
-not evidence the port is complete.
+The first gap is the one that changes what a user sees. `lib/bustle/pcap_loader.rb:433-440`
+already bustlifies a `GetNameOwner` reply into a name-ownership event — the
+machinery is there and correct — but in a live recording nothing ever makes
+those calls, so it is never fed. Consequence: every service that was already on
+the bus when recording started is drawn as a bare unique name (`:1.42`) where
+upstream draws `org.gnome.Shell`, and the filter dialog lists unique names
+instead of service names. Opening a log recorded by upstream's `bustle-pcap`
+shows the names correctly; recording with this port does not.
 
----
-
-## Unit: application — `Bustle/UI.hs`(`uiMain`/`mainB`) + `Application/Monad.hs` -> `lib/bustle/application.rb`
-
-| Facet | Up | Port | Verdict |
-|---|---|---|---|
-| one window per log | ✓ | ✓ | parity |
-| quit on last window | `maybeQuit` on window count | `Gtk::Application` does it | parity |
-| initial window re-used by Open | ✓ (`bInitialWindow`) | ✗ — `action_open` always loads into *its own* window | **gap**: upstream's first window is the one a command-line failure and a subsequent Open both land in; the port never tracks it |
-| Adwaita init | n/a | `Adwaita.init` + `Gtk::Application` | parity |
-
----
-
-## Unit: main window — `Bustle/UI.hs` + `bustle.ui`▸`diagramWindow` -> `lib/bustle/window.rb`
-
-| Widget | Up × | Port × | CSS | Signals | Text | Verdict |
-|---|---:|---:|---|---|:-:|---|
-| window | 1 | 1 | — | ✗ `delete-event` | ✓ | **gap**: no `close-request` handler, so `promptToSave` never runs and a recorded log is lost silently |
-| `Gtk.Paned` | 3 | 2 | — | — | — | the titlebar `headerPaned` is correctly subsumed by `Adwaita::ToolbarView`; **correspondence** |
-| header bars | 2 | 2 | — | — | ✓ | parity (see header unit) |
-| `Gtk.Stack` `diagramOrNot` | 1 | 1 | — | — | — | 3 pages both sides, but `PleaseHoldPage` is unreachable — see below |
-| `Gtk.MenuButton` `headerRecord` | 1 | **0** | ✗ `text-button image-button suggested-action` | ✗ | ✗ `_Record`, ✗ `Record a new log` | **gap**: no Record button |
-| `Gtk.Button` `headerStop` | 1 | **0** | ✗ `destructive-action` | ✗ `clicked` | ✗ `_Stop` | **gap**: no Stop button |
-| `Gtk.Button` `headerSave` | 1 | **0** | ✗ `image-button` | ✗ `clicked` | ✗ `Save` | **gap**: no Save button, no save flow |
-| `Gtk.Spinner` `headerSpinner` | 1 | 1 | — | ✗ start/stop | — | **gap**: moved into `please_hold_page`, which is never shown, and nothing ever starts or stops it in response to recording |
-| `Gtk.Button` `headerExport` | 1 | 1 | — | ✓ | ✓ | parity, except it is never disabled→enabled by `action.enabled` on first load… it is: `NEEDS_LOG` covers it. parity |
-
-Window title logic (`logWindowTitle`/`logTitle`): ported faithfully, including
-the `*name` asterisk for a recorded log — **but the `:recorded` branch of
-`Window::LogDetails` is unreachable**, because nothing constructs it. Dead
-code standing in for a feature.
-
-`show_waiting` (the `PleaseHoldPage` switch) and `Canvas#scroll_to_bottom`
-have **no callers anywhere in `lib/` or `exe/`**. Both exist only for the
-recorder that was not written.
-
-Driven: cannot drive. `lib/bustle/window.rb` builds
-`Adwaita::ApplicationWindow.new(@app)`, which `.claude/skills/ruby-gtk`
-records as **broken in the Ruby bindings** ("Use `Gtk::Application` +
-`Gtk::ApplicationWindow`"). The file's own comment asserts the opposite
-without evidence. **gap**: unverified against a running app, and the skill
-says it will not run.
+**Verdict: gap.** 6 of 13 rows open.
 
 ---
 
-## Unit: menus / actions / accelerators — `bustle.ui`▸3 menus -> `lib/bustle/menus.rb`
+## Unit: canvas — `Bustle/UI/Canvas.hs` + `bustle.ui`▸`diagramLayout` -> `lib/bustle/canvas.rb`
 
-| Item | Upstream label | Upstream accel | Port | Verdict |
-|---|---|---|---|---|
-| open | `gtk-open` (stock → `_Open`) | `Ctrl+O` | `win.open`, `_Open…` | **gap** (text): upstream's msgid is the stock id, the port invents `_Open…` |
-| open pair | `O_pen a Pair of Logs…` | — | ✓ | parity |
-| filter | `_Filter Visible Services…` | `Ctrl+F` | ✓ | parity |
-| statistics | `_Statistics` (check item) | `F9` | ✓ stateful action | parity |
-| about | `gtk-about` (stock → `_About`) | — | `_About Bustle` | **gap** (text): invented msgid |
-| **record session bus** | `Record S_ession Bus` | `Ctrl+E` | **absent** | **gap** |
-| **record system bus** | `Record S_ystem Bus` | `Ctrl+Y` | **absent** | **gap** |
-| **record address** | `Record _Address…` | `Ctrl+A` | **absent** | **gap** |
-| **save log** | `Save` (tooltip on `headerSave`) | `Ctrl+S` | **absent** | **gap** |
-| export as PDF | tooltip only, **no accelerator** | bound to `Ctrl+S` | **gap**: the port rebinds upstream's Save accelerator to a different command. A user who learned `Ctrl+S` in Bustle now exports a PDF instead of saving the log |
-
-Insensitivity: upstream disables `filter` and `statistics` until a log loads;
-the port disables `filter`, `statistics` and `export-pdf`. Upstream's
-`headerExport` also starts insensitive, so that is parity.
-
-Messages: 5 of the menu's msgids match upstream byte for byte, 2 are invented
-(`_Open…`, `_About Bustle`), 3 are missing (`Record S_ession Bus`,
-`Record S_ystem Bus`, `Record _Address…`). **gap** — open in
-`translation-parity.md`.
-
----
-
-## Unit: header bars — `bustle.ui`▸`header`/`sidebarHeader` -> `lib/bustle/header_bar.rb`
-
-| Widget | Up × | Port × | CSS | Signals | Text | Verdict |
-|---|---:|---:|---|---|:-:|---|
-| `Adwaita.HeaderBar` | 2 | 2 | — | — | — | parity |
-| title/subtitle labels | 2 | 1 `WindowTitle` | `title`,`subtitle` → platform | — | ✓ | correspondence |
-| `Gtk.StackSwitcher` | 1 | 1 | — | — | — | parity |
-| open `MenuButton` | 1 | 1 | `image-button` → icon button | — | ✓ `Open an existing log` | parity |
-| hamburger `MenuButton` | 1 | 1 | `image-button` | — | ✗ `Main Menu` tooltip invented (upstream has none) | **gap** (text): extra msgid |
-| export `Button` | 1 | 1 | `image-button` | ✓ | ✓ `Export as PDF` | parity |
-| record `MenuButton`, stop/save `Button`, spinner | 4 | 0 | ✗ | ✗ | ✗ | **gap**: the whole right-hand half of upstream's header bar is absent |
-
-`GtkSizeGroup` tying `sidebarHeader` to `sidebarStack`: not reproduced. Minor,
-but it is why upstream's sidebar header lines up with the sidebar; the port
-instead sets `width_request = 400` on the sidebar `ToolbarView`. **gap**
-(cosmetic, recorded rather than excused).
-
----
-
-## Unit: welcome page — `bustle.ui`▸`InstructionsPage` -> `lib/bustle/welcome_page.rb`
-
-| Widget | Up × | Port × | CSS | Text | Verdict |
+| Widget / behaviour | Up × | Port × | Signals | Text | Verdict |
 |---|---:|---:|---|:-:|---|
-| container | `Gtk.Box` 1 | `Adwaita.StatusPage` 1 | — | — | correspondence |
-| icon | `Gtk.Image` 1 | `icon-name` | `dim-label` | — | correspondence |
-| title label | 1 | `StatusPage#title` | `dim-label` | ✓ `Welcome to Bustle` | parity |
-| body label | 1 | 1 | ✓ `dim-label` | ✗ | **gap**: msgid differs by one byte |
+| drawing surface | 1 `Gtk.Layout` | 1 `Gtk::DrawingArea` + `ScrolledWindow` | ✓ `draw` | — | parity (substitution: GTK4 deleted `GtkLayout`) |
+| left-click selects by y | 1 | 1 `Gtk::GestureClick` `button=1` | ✓ `pressed`, grabs focus | — | parity |
+| Up / Down / Home / End move the selection | 1 | 1 | ✓ | — | parity |
+| space = one page down | 1 | 1 | ✓ | — | parity |
+| Left / Right = one step | 1 | 1 | ✓ | — | parity |
+| **step increment = one event row** | `Canvas.hs:102-103` sets it on **both** adjustments to `eventHeight` (30.0) | **absent** — `canvas.rb:131` reads `adjustment.step_increment` and nothing ever sets it | — | **gap** |
+| modifier guard | `[] <- eventModifier` | `state.to_i.zero?` | ✓ | — | parity |
+| highlight stripe drawn under the shapes | 1 | 1 `Diagram::Highlight` | — | — | parity |
+| clamp around the selection with half a row of padding | 1 | 1 `canvas.rb:177-181` | — | — | parity |
+| scroll to bottom | 1 | 1 `canvas.rb:72` | — | — | parity |
+| centre the timestamp column | 1 | 1 `canvas.rb:68` | — | — | parity |
+| partial invalidation | 2 stripes | whole visible area | — | — | parity (GTK4 removed it; the redraw is a superset) |
 
-The body msgid upstream is
-`Start recording D-Bus activity with the <b>Record</b> button above\n You can
-also run <i>dbus-monitor --pcap</i> from the command line` — note the **space
-after `\n`**, which `data/bustle.ui` contains. The port writes `…above\nYou
-can…`. Different lookup key, no translation. **gap.**
+The step-increment gap is small to write and visible to use: Left and Right are
+meant to scroll by exactly one message row in a diagram whose rows are 30px,
+and instead they scroll by GTK's default for the scrolled window. Both
+adjustments are affected, so the scrollbar arrows are wrong too.
 
-Behaviour note, not a widget row: this page tells the user to press a Record
-button that the port does not have. The empty state instructs the user to do
-something impossible.
-
----
-
-## Unit: please-hold page — `bustle.ui`▸`PleaseHoldPage` -> `lib/bustle/please_hold_page.rb`
-
-| Widget | Up × | Port × | Text | Verdict |
-|---|---:|---:|:-:|---|
-| label | 1 | `StatusPage#title` | ✗ | **gap**: upstream's msgid is `<big><b>Waiting for D-Bus traffic; please hold…</b></big>` (markup included, because the label is `use-markup`); the port registers the bare sentence |
-| `Gtk.Spinner` | 0 (it lives in the header) | 1 | — | extra, explained in the file's comment |
-
-Driven: ✗ — the page is added to the stack and **never selected**, because
-`Window#show_waiting` has no caller. **gap**: the widget exists, the state
-does not.
+**Verdict: gap.** 1 of 12 rows open.
 
 ---
 
@@ -155,191 +82,196 @@ does not.
 
 | Widget | Up × | Port × | CSS | Signals | Text | Verdict |
 |---|---:|---:|---|---|:-:|---|
-| `Gtk.InfoBar` | 1 | `Adwaita.Banner` | — | ✓ `response`→`button-clicked` | ✓ `_Close` | correspondence |
-| title label | 1 | banner title (markup) | — | — | — | parity |
-| details label | 1 | 1 | ✓ `dim-label` | — | — | parity |
+| the bar | 1 `Gtk.InfoBar` | 1 `Adwaita::Banner` | ✗ `message_type=error` (`bustle.ui:369`) has no counterpart; the banner carries no `error` class | ✓ close→hide | — | **gap**: the error strip renders in the accent colour, not the error colour |
+| title label | 1 | 1 (banner title) | ✗ `selectable="True"` (`bustle.ui:411`) dropped | — | ✓ | **gap** |
+| details label | 1 | 1 | ✗ `selectable="True"` (`bustle.ui:427`) dropped | — | ✓ | **gap** |
+| details hidden when absent | ✓ | ✓ `error_bar.rb:36` | — | — | — | parity |
+| close button | built-in `show_close_button` | `button_label = _("_Close")` | — | ✓ | ✗ extra msgid | **gap**: `_Close` is a port-only msgid; upstream's close button is GTK's own, already translated everywhere |
 
-The failure paths that *reach* it are where the gaps are: upstream routes
-unreadable log, failed save, failed PDF export **and monitor error** here. The
-port routes unreadable log and failed PDF export. Save and monitor do not
-exist. Those are recorded against their own units, not here. **parity** for
-the widget.
+Both labels are `selectable` upstream on purpose: the one thing a user does with
+"Could not read '/path': …" is select it and paste it into a bug report. The
+port's banner title cannot be selected at all and `error_bar.rb:57` never sets
+`selectable` on the details label.
 
-`Adwaita::Banner#use_markup` is a libadwaita 1.7 property; unverified against
-the gem in this checkout, and the banner's whole title is passed as Pango
-markup. Flagged, not counted.
+**Verdict: gap.** 4 of 5 rows open.
 
 ---
 
-## Unit: canvas — `Bustle/UI/Canvas.hs` + `bustle.ui`▸`diagramLayout` -> `lib/bustle/canvas.rb`
+## Unit: `bustle-pcap` CLI — `c-sources/bustle-pcap.c` -> `lib/bustle/pcap_cli.rb`
 
-| Facet | Up | Port | Verdict |
+| Behaviour | Upstream | Port | Verdict |
 |---|---|---|---|
-| `Gtk.Layout` in `ScrolledWindow` | ✓ | `Gtk::DrawingArea` + explicit `set_size_request` | correspondence |
-| `draw` | `canvasDraw`, clipped to visible rect | ✓ | parity |
-| left-click selects region at y, grabs focus | ✓ | ✓ `GestureClick` button 1 | parity |
-| Left/Right = h-step | ✓ | ✓ | parity |
-| space = v-page | ✓ | ✓ | parity |
-| Up/Down/Home/End = move selection | ✓ | ✓ | parity |
-| selection highlight as an extra `Highlight` shape | ✓ | ✓ | parity |
-| `canvasClampAroundSelection` on idle | ✓ | ✓ (synchronous) | parity |
-| `canvasScrollToBottom` during recording | ✓ | method exists, **no caller** | **gap**: dead code, blocked on the recorder |
-| partial invalidation of the two changed stripes | ✓ | whole visible area | explained in the file; acceptable |
+| `-e/--session`, `-y/--system`, `-a/--address`, `-v/--verbose`, `-q/--quiet`, `-V/--version`, `-h/--help` | `:43-67` | `pcap_cli.rb:56-66` | parity |
+| exactly one FILENAME, else exit 2 | `:159-168` | `pcap_cli.rb:136` | parity |
+| two buses → exit 2, upstream's wording | `:135-143` | `pcap_cli.rb:133` | parity |
+| version notice, byte for byte | `:127-130` | `pcap_cli.rb:45-53` | parity |
+| "Logging D-Bus traffic to '%s'..." / "Hit Control-C to stop logging." | `:255,260` | `pcap_cli.rb:188-189` | parity |
+| `--verbose` per-message summary | `message_logged_cb` | `pcap_cli.rb:195-206` | parity |
+| cancellation is not an error | `stopped_cb` | `pcap_cli.rb:211-216` | parity |
+| **`--address=ADDRESS`** | `GOptionContext` (`:88-105`) accepts the `=` form | `pcap_cli.rb:105-123` matches exact tokens only; `--address=X` falls through `classify` to "Unknown option --address=X", exit 2 | **gap** |
+| **bundled short options (`-vq`)** | GOption accepts | not matched → "Unknown option -vq" | **gap** |
+| **abbreviated long options (`--sess`)** | GOption accepts | not matched | **gap** |
+| **a repeated bus flag** | `!!session + !!system + !!address` (`:117`) — `-e -e` is **one** bus | `pcap_cli.rb:139` counts occurrences, so `-e -e out.pcap` exits 2 with "You may only specify one of…" | **gap** |
+| **parse error outranks `--help`** | parse error checked first (`:108-116`, exit 2), `help` after (`:118`) | `pcap_cli.rb:127-131` returns no complaint when `@help` is set, so `--help --bogus` prints help and exits 0 | **gap** |
+| `--help` text | generated by `g_option_context_get_help` | hand-written heredoc `pcap_cli.rb:25-43` | **gap**: approximates GLib's output rather than reproducing it; not byte-compared, and `-a, --address` carries no `ADDRESS` placeholder in either |
 
-Driven: ✗ — no test, no app run (GTK4 gem is not installed in this checkout,
-see `test-parity.md`).
+**Verdict: gap.** 6 of 13 rows open. The option grammar is the substance: a
+script calling `bustle-pcap --address=unix:path out.pcap` works against
+upstream and exits 2 here.
 
 ---
 
-## Unit: details view — `Bustle/UI/DetailsView.hs` + `bustle.ui`▸`detailsGrid` -> `lib/bustle/details_view.rb`
+## Unit: filter dialog — `UI/FilterDialog.hs` -> `lib/bustle/filter_dialog.rb`
 
-| Widget | Up × | Port × | Text | Verdict |
+| Widget / behaviour | Up × | Port × | CSS | Signals | Text | Verdict |
+|---|---:|---:|---|---|:-:|---|
+| dialog sized parent·7/8 × parent/2 | 1 | 1 `filter_dialog.rb:35-36` | — | — | — | parity |
+| Close applies the filter however the window closes | ✓ `dialogRun` then read the store | ✓ `close-request`→`apply`, `filter_dialog.rb:60-63` | — | ✓ | — | parity |
+| instructions label | 1 | 1 | — | — | ✓ byte-identical | parity |
+| one tick per participant | N | N | — | ✓ `toggled` via `CheckButton` | — | parity |
+| `formatNames` brace compression `ns{A,B}` | 1 | 1 `filter_dialog.rb:120-155` | — | — | — | parity |
+| returns the set of **unticked** names | ✓ | ✓ `filter_dialog.rb:173` | — | — | — | parity |
+| re-renders through the whole renderer | `processWithFilters` | `window.rb:436` | — | — | — | parity |
+| **row banding** | `treeViewSetRulesHint True` (`:72`), with the comment *"otherwise it's tough to see where each group starts and ends"* | `boxed-list` on a `ListBox` — separators, not banding | ✗ | — | — | **gap** |
+| **name view size request 600×371** | `:74` | absent | — | — | — | **gap** |
+| **instructions size request 600×−1** | `:121` | absent | — | — | — | **gap** |
+| dialog title | none upstream | `_("Filter Visible Services")` | — | — | ✗ extra msgid | **gap** |
+
+**Verdict: gap.** 4 of 12 rows open. A participant list is grouped output; the
+banding upstream added on purpose is what makes the grouping readable, and a
+`boxed-list` separator is not the same signal.
+
+---
+
+## Unit: open-a-pair dialog — `OpenTwoDialog.{hs,ui}` -> `lib/bustle/open_two_dialog.rb`
+
+| Behaviour | Up × | Port × | Text | Verdict |
 |---|---:|---:|:-:|---|
-| `Gtk.Grid` | 1 | `Adwaita.PreferencesGroup` | — | correspondence |
-| caption labels | 6 | row titles | ✓ Type/Path/Member/Arguments/Sender/Destination | parity |
-| value labels (selectable) | 4 | row subtitles, `subtitle-selectable` | — | parity |
-| `Gtk.Stack` `detailsType`, 5 pages | 1 | one row subtitle | ✓ all 5 msgids match | correspondence |
-| `Gtk.TextView` `detailsArguments` | 1 | 1 | — | parity |
-| destination hidden for an undirected signal | ✓ | ✓ | — | parity |
+| title "Open a Pair of Logs" | 1 | 1 | ✓ | parity |
+| two choosers, titled "Select session/system bus log" | 2 | 2 | ✓ | parity |
+| "Session bus log:" / "System bus log:" | 2 | 2 | ✓ | parity |
+| the two-logs explanation | tooltip on the menu item | group description | ✓ byte-identical | parity |
+| Open insensitive until both chosen | ✓ | ✓ `open_two_dialog.rb:178` | — | parity |
+| choosers cleared when the dialog hides | ✓ `hideMyself` | dialog rebuilt per activation | — | parity |
+| **folder propagated between choosers** | `current-folder-changed` on **both**, so browsing in one moves the other (`:37-47`) | only when a **file** is chosen (`:133-139`); browsing propagates nothing | — | **gap** |
+| Open / Cancel labels | `gtk-open` / `gtk-cancel` (GTK's own, translated everywhere) | `_("_Open")` / `_("_Cancel")` | ✗ 2 extra msgids | **gap** |
+| "(none chosen)" / "Choose…" | no counterpart | 2 new strings | ✗ 2 extra msgids | **gap** (explained: `GtkFileChooserButton` showed the filename itself) |
 
-`dim-label` on the captions becomes `Adwaita::ActionRow` title styling —
-correspondence. **parity.**
-
----
-
-## Unit: statistics pane — `Bustle/StatisticsPane.hs` + `bustle.ui`▸`sidebarStack` -> `lib/bustle/statistics_pane.rb`
-
-| Facet | Up | Port | Verdict |
-|---|---|---|---|
-| `Gtk.Stack` of 3 `ScrolledWindow` | ✓ | ✓ | parity |
-| Frequencies: Member + Frequency | `TreeView` + `CellRendererProgress`, min width 120 | `ColumnView` + `ProgressBar`, fixed 120 | correspondence |
-| Durations: Method/Total/Calls/Mean | ✓ | ✓ | parity |
-| Sizes: Member/Smallest/Mean/Largest | ✓ | ✓ | parity |
-| member cell: kind + start-ellipsised member, 30 chars, right-aligned | ✓ | ✓ | parity |
-| returns italic, errors red | ✓ | ✓ | parity |
-| 7pt text on all three views | ✓ | ✗ | **gap**: upstream shrinks the tables to 7pt so a 30-char member fits the sidebar; the port leaves them at the default size |
-| sortable columns | `TreeView` headers visible, not sortable | `ColumnView`, not sortable | parity |
-| hidden at startup, revealed by F9 | ✓ | ✓ | parity |
-| `Missing.formatSize` for the size columns | `g_format_size()` | **reimplemented in Ruby with its own msgids** | **gap** — see below |
-
-`Bustle/Missing.hs` calls `g_format_size()`, whose strings live in **GLib's**
-catalogue and are already translated in every language GLib ships. The port's
-`lib/bustle/missing.rb` reimplements the formatting and marks `%u byte` /
-`%u bytes` in **Bustle's** domain, where nobody has translated them, and
-hard-codes English SI unit suffixes. Two invented msgids and a localisation
-regression. **gap.**
+**Verdict: gap.** 3 of 9 rows open.
 
 ---
 
-## Unit: filter dialog — `Bustle/UI/FilterDialog.hs` -> `lib/bustle/filter_dialog.rb`
+## Unit: details pane — `UI/DetailsView.hs` + `bustle.ui`▸`detailsGrid` -> `lib/bustle/details_view.rb`
 
-| Facet | Up | Port | Verdict |
-|---|---|---|---|
-| 7/8 window width, half its height, transient, modal | ✓ | ✓ | parity |
-| instructions label, 600px wrap | ✓ | wrap, no width | parity |
-| headerless `TreeView` 600×371, toggle + name column | ✓ | `ListBox` of `ActionRow` + `CheckButton`, `boxed-list` | correspondence |
-| `org.example.{Foo,Bar}` namespace grouping | ✓ | ✓ | parity |
-| unticked names returned as the hidden set, log re-rendered via `processWithFilters` | ✓ | ✓ | parity |
-| Close button applies | ✓ | ✓ (and on `close-request`) | parity |
-| instructions msgid | ✓ | ✓ byte-identical | parity |
-| dialog title | `Filter Visible Services` — **not marked upstream**, the window title is set from the untranslated string | marked `_("Filter Visible Services")` | **gap**: extra msgid. Also upstream's `Close` is the stock `gtk-close`; the port invents `_Close` |
+| Widget / behaviour | Up × | Port × | CSS | Signals | Text | Verdict |
+|---|---:|---:|---|---|:-:|---|
+| Type / Path / Member / Arguments / Sender / Destination captions | 6 | 6 | `dim-label` → row titles + `heading` | — | ✓ all 6 byte-identical | parity |
+| the 5 kind names | 5 stack pages | 5 branches `details_view.rb:122-133` | — | — | ✓ | parity |
+| sender, destination, path, member values | 4 labels | 4 row subtitles, `subtitle_selectable` | — | — | — | parity |
+| member borrows the call's member for a return/error | ✓ | ✓ `details_view.rb:152-157` | — | — | — | parity |
+| destination row hidden for a broadcast signal | ✓ | ✓ `details_view.rb:116-119` | — | — | — | parity |
+| arguments, one per line with signatures | 1 `TextView` | 1 | — | — | — | parity |
+| pane hidden when the selection clears | ✓ | ✓ `details_view.rb:48-54` | — | — | — | parity |
+| **values escaped before a markup label** | `labelSetText` for sender/destination/path, `labelSetMarkup` only for member (`:104-114`) | `AdwActionRow#subtitle` interprets markup, and `details_view.rb:108-118` assigns raw strings | — | — | — | **gap** |
 
-Styling: `suggested-action` on Close is the port's addition; upstream's Close
-is an ordinary dialog button. **gap** (cosmetic): a Close button that only
-dismisses should not be the suggested action.
+The escaping gap is narrow — D-Bus names and object paths cannot contain `<` or
+`&` — but upstream drew the line between text and markup deliberately, on four
+labels, and the port erased it on three of them.
 
----
-
-## Unit: open-pair dialog — `OpenTwoDialog.hs` + `OpenTwoDialog.ui` -> `lib/bustle/open_two_dialog.rb`
-
-| Widget | Up × | Port × | Text | Verdict |
-|---|---:|---:|:-:|---|
-| `Gtk.Dialog` | 1 | `Adwaita.Window` | ✓ `Open a Pair of Logs` | correspondence |
-| `Gtk.Table` + 2 labels | 1+2 | `PreferencesGroup` + 2 `ActionRow` | ✓ `Session bus log:` / `System bus log:` | correspondence |
-| `Gtk.FileChooserButton` ×2 | 2 | `Gtk::Button` + `Gtk::FileDialog` ×2 | ✓ `Select session bus log` / `Select system bus log` | correspondence |
-| Cancel / Open | 2 | 2 | ✗ | **gap** (text): upstream's are stock `gtk-cancel`/`gtk-open`; the port invents `_Cancel`/`_Open` |
-| Open sensitive only when both set | ✓ | ✓ | — | parity |
-| each chooser seeds the other's folder while the other is empty | ✓ | ✓ | — | parity |
-| hidden (not destroyed) and **unselected** on response | ✓ | `window.close`, choices kept | **gap**: upstream resets both choosers so the next Open-a-pair starts clean; the port's dialog object is not reused, so re-opening builds a fresh one — behaviour coincidentally matches, but the `(none chosen)` / `Choose…` placeholder strings are two more invented msgids |
-| group description | the `.ui` tooltip `Display two logs—…side by side.` | used as the group description | ✓ byte-identical | parity |
+**Verdict: gap.** 1 of 8 rows open.
 
 ---
 
-## Unit: about dialog — `Bustle/UI/AboutDialog.hs` -> `lib/bustle/about_dialog.rb`
+## Unit: statistics sidebar — `StatisticsPane.hs` -> `lib/bustle/statistics_pane.rb`
 
-Name, version, comments, website, 10 authors, copyright string, licence read
-off disk with a warning on failure, logo icon. All present and byte-identical.
-`Gtk::AboutDialog` rather than `Adwaita::AboutDialog`, matching upstream's
-widget. **parity.**
+| Widget / behaviour | Up × | Port × | CSS | Text | Verdict |
+|---|---:|---:|---|:-:|---|
+| 3 titled pages: Frequencies, Durations, Sizes | 3 | 3 | — | ✓ | parity |
+| 3 scrolled windows, 3 views | 3+3 | 3+3 | `data-table` + `bustle-statistics` | — | parity |
+| 10 columns with upstream's titles | 10 | 10 | — | ✓ Member/Frequency/Method/Total/Calls/Mean/Smallest/Largest all byte-identical | parity |
+| `%.1f ms` | 1 | 1 | — | ✓ | parity |
+| Method / Signal / Method call / Method return / Error kind labels | 6 | 6 | — | ✓ | parity |
+| member ellipsised from the start, 30 chars, right-aligned | ✓ | ✓ `statistics_pane.rb:235-241` | — | — | parity |
+| returns italic, errors red | ✓ `formatSizeInfoMember` | ✓ `statistics_pane.rb:304-311` | — | — | parity |
+| frequency progress bar, `2 + count*98/max`, text = count | 1 | 1 `statistics_pane.rb:263-272,283` | — | — | parity |
+| 7-point cell text | `cellTextSizePoints := 7` on all 10 renderers | one CSS rule on the three views, `statistics_pane.rb:37-41` | ✓ located | — | parity (correspondence: GTK4 column views have no such property) |
+| both buses conflated | ✓ | ✓ | — | — | parity |
+| **Frequency column width** | `treeViewColumnSetMinWidth 120` (`:148`) — a floor | `col.fixed_width = 120` (`statistics_pane.rb:145`) — a ceiling too | — | — | **gap**: the bar cannot grow when the sidebar is widened |
 
----
-
-## Unit: open dialog — `Bustle/UI.hs`▸`showOpenDialog` -> `lib/bustle/open_dialog.rb`
-
-Open mode, modal, loads into a window. Filters (`D-Bus logs`, `All files`,
-`Open a Log` title) are the port's addition — three invented msgids, recorded
-in `translation-parity.md`. The chooser itself is **parity**; upstream's dialog
-is built with no title and no filter, so the port is strictly better here and
-the only cost is catalogue drift.
-
----
-
-## Unit: PDF save dialog — `Bustle/UI.hs`▸`saveToPDFDialogue` -> `lib/bustle/pdf_export.rb`
-
-| Facet | Up | Port | Verdict |
-|---|---|---|---|
-| Save mode, modal, local-only, overwrite confirmation | ✓ | `Gtk::FileDialog` (confirmation is the portal's) | correspondence |
-| current name `<logTitle>.pdf` | ✓ | ✓ | parity |
-| folder defaults to the log's directory | ✓ | ✓ | parity |
-| renders to a Cairo PDF surface the size of the diagram | ✓ | ✓ | parity |
-| error msgid | `Couldn't export log as PDF: ` (trailing space, message concatenated) | `Couldn't export log as PDF: %s` | **gap**: reworded msgid |
-| title msgid | n/a (no title upstream) | `Export as PDF` reused | acceptable |
+**Verdict: gap.** 1 of 11 rows open.
 
 ---
 
-## Unit: batch modes — `Bustle/Noninteractive.hs` -> `lib/bustle/noninteractive.rb`
+## Unit: main window — `Bustle/UI.hs` + `bustle.ui`▸`diagramWindow` -> `lib/bustle/window.rb` + `header_bar.rb`
 
-`--count` ` %4d %6s %s.%s`, `--time` ` %9.4f %3d %9.4f %s.%s`, `--dot`
-`digraph bustle { … }` with `nub`-ed method-call edges, warnings to stderr,
-`Couldn't parse '%s': %s` and a failure exit on load error. Formats and
-msgids match. **parity**, with one note: upstream passes the member through
-`formatMemberName`; the port interpolates `info.member` directly. For a plain
-member name these agree.
+| Widget / behaviour | Up × | Port × | CSS | Signals / actions | Text | Verdict |
+|---|---:|---:|---|---|:-:|---|
+| Record menu button | 1 | 1 | ✓ `suggested-action` (`text-button`/`image-button` supplied by `Adwaita::ButtonContent`) | ✓ `recordMenu` | ✓ `_Record` | parity |
+| Stop button | 1 | 1 | ✓ `destructive-action` | ✓ clicked→`monitor.stop`, grabs focus | ✓ `_Stop` | parity |
+| Open menu button | 1 | 1 | ✓ | ✓ `openMenu` | ✓ tooltip "Open an existing log" | parity |
+| Save button | 1 | 1 | ✓ | ✓ `win.save`, `Ctrl+S`, insensitive until a recording exists | ✓ "Save" | parity |
+| Export button | 1 | 1 | ✓ | ✓ `win.export-pdf`, no accel upstream either | ✓ "Export as PDF" | parity |
+| main menu button | 1 | 1 | ✓ | ✓ | ✗ `Main Menu` is a port-only tooltip | **gap** (extra) |
+| spinner | 1 | 1 | — | ✓ start/stop | — | parity |
+| title / subtitle labels, markup | 2 | 2 | ✓ `title`, `subtitle` | ✓ `labelSetMarkup` | ✓ `Logged <b>%u</b> messages` | parity |
+| 3-page stack | 1 | 1 | — | ✓ | — | parity |
+| statistics sidebar starts hidden, F9 reveals | 1 | 1 | — | ✓ stateful `win.statistics` | ✓ `_Statistics` | parity |
+| size group over sidebar header + stack | 1 | 1 | — | — | — | parity |
+| one window per log; quit on the last | ✓ | ✓ `Gtk::Application` | — | — | — | parity |
+| initial window re-used by Open/Record | ✓ `consumeInitialWindow` | ✓ `application.rb:53-68`, `window.rb:315` | — | — | — | parity |
+| `promptToSave` on close | ✓ `delete-event` | ✓ `close-request`, `window.rb:398-406` | — | ✓ | ✓ all 4 strings byte-identical | parity |
+| save a recording, `fileMove` | ✓ | ✓ `window.rb:379-387` | — | ✓ | ✓ incl. the recovery advice | parity |
+| export PDF | ✓ | ✓ `pdf_export.rb` | — | ✓ | ✓ `Couldn't export log as PDF: ` | parity |
+| recording title/subtitle, 200ms batching, count only when shapes appear | ✓ | ✓ `recorder.rb:30,142-150` | — | — | ✓ `Recording %s&#8230;` | parity |
+| abandon a recording that produced nothing | ✓ | ✓ `window.rb:373-380` | — | — | — | parity |
+| `--debug` draws shape bounds | ✓ | ✓ `main.rb:117`→`canvas.rb:189` | — | — | — | parity |
+
+**Verdict: gap.** 1 of 20 rows open, and it is only an extra string.
 
 ---
 
-## Units with no port file at all
+## Units with parity
 
-| Unit | What the user loses |
-|---|---|
-| `Bustle/Monitor.hs` + `c-sources/pcap-monitor.c` | live recording of any bus |
-| `Bustle/UI/Recorder.hs` | the record→watch→stop→save-as flow, the message counter in the subtitle, the temp file under the cache dir, the manual-recovery warning |
-| `Bustle/UI/RecordAddressDialog.hs` + `RecordAddressDialog.ui` | recording an arbitrary bus by address |
-| `Bustle/UI.hs`▸`showSaveDialog`/`promptToSave` | saving a recorded log, and the "Save log '%s' before closing?" guard that stops it being thrown away |
-| `c-sources/bustle-pcap.c` | the standalone `bustle-pcap` CLI recorder the appdata and the welcome page both reference |
+- **welcome page** — `bustle.ui`▸`InstructionsPage` -> `lib/bustle/welcome_page.rb`. 4 widgets, `dim-label` carried, both msgids byte-identical including the embedded `<b>`/`<i>` markup and the newline. `Adwaita::StatusPage` for upstream's hand-spaced box is a located substitution.
+- **about dialog** — `UI/AboutDialog.hs` -> `lib/bustle/about_dialog.rb`. All 10 authors, the copyright line, the website, the licence read off disk with a warning rather than a crash, `modal`, `transient_for`, and `_("Someone's favourite D-Bus profiler")` byte-identical. Logo icon renamed with the app ID.
+- **batch modes** — `Bustle/Noninteractive.hs` -> `lib/bustle/noninteractive.rb`. All three formats character for character (`" %4d %6s %s.%s"`, `" %9.4f %3d %9.4f %s.%s"`, the `digraph bustle` wrapper with `nub`-equivalent `uniq`), `_("Couldn't parse '%s': %s")` and `_("(no interface)")` byte-identical, exit status 1 on a load failure.
+- **record-address dialog** — `RecordAddressDialog.{hs,ui}` -> `lib/bustle/record_address_dialog.rb`. Title, `Address:`, the placeholder with its translator comment, and Record insensitive while the entry is empty. The placeholder moving to the group description is a located substitution (`Adwaita::EntryRow` has no placeholder property) and it keeps upstream's bytes.
+- **please-hold page** — one extra spinner, explained above; otherwise the single markup msgid is byte-identical.
 
-Together these are **the half of Bustle that produces logs**. The port can
-only read `.bustle` files somebody else recorded. The appdata the port ships
-still claims "It's now possible to monitor the system bus … It's also possible
-to monitor an arbitrary bus by address" — it is not, in this port.
+---
 
-`.reports/component-inventory.md` lists "Live recording" and "pcap parsing" as
-blockers with a decision to be made. pcap parsing was solved
-(`lib/bustle/pcap_loader.rb`, 495 lines). Recording was not attempted, and no
-file in `lib/` says so. The absence is invisible from inside the code — which
-is what `accountability-ensurance.md` is about.
+## Text axis summary
+
+73 of upstream's 74 message keys are produced by the port, byte for byte. The
+one gap and the 15 port-only keys are in `translation-parity.md`; the 9 extras
+that belong to a component are marked ✗ in the tables above.
 
 ## Stylesheet
 
-Neither side ships a `.css` file. Every class used on both sides is a GTK or
-libadwaita platform class. No app-namespaced class exists to compare, and no
-`set_css_name` on either side. **Clean.**
+Neither tree has a `.css` file; the port's one rule
+(`statistics_pane.rb:37-41`) replaces a GTK3 cell-renderer property and has
+nothing to diff against. Upstream's nine GtkBuilder element names
+(`errorBarTitle`, `detailsPath`, `detailsMember`, `detailsArguments`,
+`methodCall`, `methodReturn`, `error`, `signal`, `directedSignal`) are defined
+by no stylesheet in either tree — dead upstream, correctly absent here.
 
-## Driven
+Every CSS class the port attaches (`suggested-action`, `destructive-action`,
+`dim-label`, `title`, `subtitle`, `heading`, `boxed-list`, `card`, `property`,
+`data-table`) is a GTK or libadwaita platform class, so none needs a rule.
 
-Nothing was driven. `require "bustle"` fails in this checkout — the `gtk4`
-gem is not installed, and `lib/bustle/diagram.rb` requires it at load time
-from `lib/bustle.rb`, so even the backend-only half cannot be loaded despite
-`lib/bustle.rb`'s comment that it "can be used on their own". No screenshot,
-no `gtk_driver.rb` session, no behaviour on any unit confirmed by execution.
-Every `parity` verdict above is a reading, not an observation.
+## Rows open, by cost to close
+
+| # | Gap | Where |
+|---|---|---|
+| 1 | live recording never seeds well-known-name ownership | `monitor.rb` — needs `ListNames` + per-name `GetNameOwner` on a second connection |
+| 2 | pkexec exit 126/127 and clean exit 0 not mapped to upstream's errors | `monitor.rb:271-278` |
+| 3 | monitor owns no `org.freedesktop.Bustle.Monitor.*` name | `monitor.rb` |
+| 4 | `bustle-pcap` rejects `--address=X`, `-vq`, `--sess` | `pcap_cli.rb:105-123` |
+| 5 | `bustle-pcap` rejects a repeated bus flag; `--help` outranks a parse error | `pcap_cli.rb:127-139` |
+| 6 | error bar is not error-coloured | `error_bar.rb:50` |
+| 7 | error bar title and details are not selectable | `error_bar.rb:50,57` |
+| 8 | canvas step increment is not one event row | `canvas.rb:131` |
+| 9 | filter list has no row banding and no size requests | `filter_dialog.rb:96,114` |
+| 10 | open-a-pair does not propagate a browsed folder | `open_two_dialog.rb:133-139` |
+| 11 | statistics Frequency column is fixed-width, not min-width | `statistics_pane.rb:145` |
+| 12 | details values go unescaped into markup subtitles | `details_view.rb:108-118` |
