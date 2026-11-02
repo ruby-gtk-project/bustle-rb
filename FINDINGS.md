@@ -134,3 +134,35 @@ is inside the msgid — and its please-hold label is
 `<big><b>Waiting for D-Bus traffic; please hold…</b></big>`, likewise. Both are
 `Gtk::Label`s in this port for that reason, which is also what they are
 upstream.
+
+## Icons are not found when the app runs out of its own source tree
+
+Established by driving the app, not by reading the code: the welcome page drew
+a broken-image placeholder where the Bustle logo should be, and the about
+dialog had no logo either. Upstream installs `data/icons` into the prefix and
+leaves the rest to the icon theme; an uninstalled copy — which is how
+`ruby exe/bustle` and the drive scripts run it — is on nobody's
+`XDG_DATA_DIRS`, so `Gtk::IconTheme` never sees
+`org.rubygtkproject.Bustle-symbolic`. `Bustle::Application#install_icons` now
+adds the shipped `data/icons` to the theme's search path on activate, which is
+a no-op for an installed copy. `test/drive_bustle.rb` asserts
+`IconTheme#has_icon?` for both the symbolic and the full-colour name, because
+a missing icon is otherwise silent.
+
+## `GLib.format_size` works
+
+Resolved: the open question in the `GLib.format_size` section above. The
+statistics pane's three size columns render real figures under
+`test/drive_bustle.rb`, so the glib2 spelling is right as written.
+
+## No binding gaps were hit
+
+Driving every component in `.reports/component-inventory.md` turned up no
+missing or broken ruby-gnome binding. In particular `Gtk::Application#
+get_accels_for_action`, `Gtk::EventControllerKey`'s and `Gtk::GestureClick`'s
+`signal_emit`, `Adwaita::AlertDialog#get_response_appearance` and
+`Gtk::IconTheme#add_search_path` all behave as the C API documents. The one
+thing that genuinely cannot be driven is `Gtk::FileDialog`: GTK4 made it a
+one-shot async chooser with no signals, so the four dialogs that wrap one are
+tested by asserting the chooser's configuration and calling the code its
+callback calls.

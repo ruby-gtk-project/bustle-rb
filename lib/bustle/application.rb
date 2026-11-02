@@ -21,6 +21,14 @@ module Bustle
   class Application
     APP_ID = "org.rubygtkproject.Bustle"
 
+    # Upstream installs data/icons into the prefix and leaves the rest to the
+    # icon theme. A copy run out of its own source tree — which is how the
+    # drive scripts and `ruby exe/bustle` run it — is not installed anywhere,
+    # so the theme has to be pointed at the icons the port ships, or the
+    # welcome page and the about dialog draw a broken-image placeholder where
+    # the logo should be.
+    ICON_DIRECTORY = File.expand_path("../../data/icons", __dir__)
+
     def initialize(logs: [], pair: nil, show_bounds: false, app_id: APP_ID, flags: :default_flags, present: true)
       @logs = logs
       @pair = pair
@@ -32,7 +40,10 @@ module Bustle
 
     def build
       app.tap do
-        app.signal_connect("activate") { targets.each { |details| open_window(details) } }
+        app.signal_connect("activate") do
+          install_icons
+          targets.each { |details| open_window(details) }
+        end
       end
     end
 
@@ -73,6 +84,16 @@ module Bustle
     end
 
     private
+
+      # The display only exists once the application has activated, which is
+      # why this is not in `app`.
+      def install_icons
+        Gdk::Display.default.then do |display|
+          if display && File.directory?(ICON_DIRECTORY)
+            Gtk::IconTheme.get_for_display(display).add_search_path(ICON_DIRECTORY)
+          end
+        end
+      end
 
       # One window per log named on the command line, or one window with
       # nothing in it — which is the window the Open action then loads into.

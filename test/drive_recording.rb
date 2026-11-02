@@ -40,8 +40,18 @@ GtkDriver.drive(application, shots: ENV.fetch("BUSTLE_SHOTS", File.join(Dir.tmpd
   end
 
   d.step("the recording is under way") do
-    log_path = app.windows.first.instance_variable_get(:@recorder).monitor.filename
+    window = app.windows.first
+    log_path = window.instance_variable_get(:@recorder).monitor.filename
     d.check("the log is being written") { File.size?(log_path).to_i.positive? }
+    d.check("the header says which bus is being recorded") do
+      window.header_bar.title_label.label == "Recording session bus&#8230;"
+    end
+    d.check("Stop replaced Record and Open") do
+      window.header_bar.stop_button.visible? && !window.header_bar.record_button.visible?
+    end
+    d.check("starting a recording cleared any earlier error") do
+      !window.error_bar.container.visible?
+    end
     d.shot("r1-recording")
   end
 

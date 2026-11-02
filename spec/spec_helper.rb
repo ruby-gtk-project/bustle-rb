@@ -16,12 +16,23 @@ begin
   end
 rescue LoadError => error
   # check the error message and re-raise when unexpected
-  raise error unless error.message.include?("kettle")
+  unless error.message.include?("kettle")
+    raise error
+  end
 end
 
 # External RSpec & related config
-require "kettle/test/rspec"
-# `kettle/test/rspec` installs harness helpers documented in spec/README.md.
+begin
+  require "kettle/test/rspec"
+  # `kettle/test/rspec` installs harness helpers documented in spec/README.md.
+rescue LoadError => error
+  # The Nix dev shell carries the app's runtime closure only, not the
+  # kettle-dev development bundle, so the specs have to run without the
+  # harness helpers there. Anything else is a real missing dependency.
+  unless error.message.include?("kettle")
+    raise error
+  end
+end
 
 # This library
 require "bustle/rb"

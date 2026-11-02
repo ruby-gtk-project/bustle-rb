@@ -213,8 +213,11 @@
             unset BUNDLE_GEMFILE BUNDLE_FROZEN
             echo "bustle devshell — ruby $(ruby -e 'print RUBY_VERSION')"
             echo "run the app:   xvfb-run ruby exe/bustle"
-            echo "drive the app: xvfb-run ruby test/drive_*.rb"
-            echo "run the specs: ruby -e 'require \"rspec/core\"; exit RSpec::Core::Runner.run([\"--format\", \"progress\", \"--require\", \"spec_helper\", \"spec\"])'"
+            echo "drive the app: xvfb-run ruby test/drive_bustle.rb"
+            echo "               dbus-run-session -- xvfb-run ruby test/drive_recording.rb"
+            # The renderer and diagram specs require gtk4, which needs a
+            # display even to load, so the specs run under xvfb-run too.
+            echo "run the specs: xvfb-run ruby -e 'require \"rspec/core\"; exit RSpec::Core::Runner.run([\"--format\", \"progress\", \"--require\", \"spec_helper\", \"spec\"])'"
           '';
         };
       });
