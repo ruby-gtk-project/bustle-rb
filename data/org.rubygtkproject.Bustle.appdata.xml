@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2014 Philip Withnall <philip@tecnocode.co.uk> -->
+<!-- Copyright 2016–2018 Will Thompson <will@willthompson.co.uk> -->
+<!-- Ported from upstream's data/org.freedesktop.Bustle.appdata.xml.in -->
+<component type="desktop-application">
+	<id>org.rubygtkproject.Bustle</id>
+	<launchable type="desktop-id">org.rubygtkproject.Bustle.desktop</launchable>
+	<metadata_license>CC-BY-SA-3.0</metadata_license>
+	<name>Bustle</name>
+	<summary>Draw sequence diagrams of D-Bus activity</summary>
+	<description>
+		<!-- Translators: These are the application description paragraphs in the AppData file. -->
+		<p>Bustle draws sequence diagrams of D-Bus activity.
+		    It shows signal emissions, method calls and their
+		    corresponding returns, with time stamps for each individual
+		    event and the duration of each method call. This can help
+		    you check for unwanted D-Bus traffic, and pinpoint why your
+		    D-Bus-based application is not performing as well as you
+		    like. It also provides statistics like signal frequencies
+		    and average method call times.</p>
+		<p>This is the Ruby GTK4 and Libadwaita port of Bustle.</p>
+	</description>
+	<project_license>LGPL-2.1+ AND GPL-3.0</project_license>
+	<url type="homepage">https://github.com/ruby-gtk-project/bustle-rb</url>
+	<url type="bugtracker">https://github.com/ruby-gtk-project/bustle-rb/issues</url>
+	<translation type="gettext">bustle</translation>
+	<provides>
+		<binary>bustle</binary>
+	</provides>
+	<releases>
+		<release date="2026-11-02" version="0.1.0">
+			<description>
+				<p>First release of the Ruby port: open pcap logs of D-Bus traffic, explore them as sequence diagrams with a details pane and statistics, filter services, and export the diagram as a PDF.</p>
+			</description>
+		</release>
+	</releases>
+</component>

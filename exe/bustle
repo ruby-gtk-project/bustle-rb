@@ -3,4 +3,4 @@
 
 require "bustle"
 
-Bustle::Application.new.build.run
+exit(Bustle::Main.run(ARGV))
