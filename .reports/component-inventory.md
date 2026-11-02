@@ -347,13 +347,16 @@ stack Haskell needs to thread `BConfig`/`BState`, and its content lives in
 > A5. Items 1 and 2 as first written were false by then and are replaced; item 3
 > is narrowed to the part that is still true.
 
-1. **Every component has now been run.** `test/drive_bustle.rb` walks all 22
-   components with 262 checks and 21 screenshots (`DRIVE OK`), and
-   `test/drive_recording.rb` records a real session bus through the GUI with 6
-   more. "Present" below therefore means "appears on screen and responds", except
-   for the parts of component 21 named in A1 and A2 of that report: the pkexec
-   exit-status mapping and `Monitor#stop` against a subprocess the port may not
-   signal are executed by nothing.
+1. **Every component has now been run, and the gate runs both scripts.**
+   `test/drive_all.rb` runs `test/drive_bustle.rb` (21 components, 290 checks,
+   21 screenshots) and `test/drive_recording.rb` (component 21, a real session
+   bus recorded through the GUI, 9 checks) and sums what the two of them
+   covered: 22 of 22. "Present" below therefore means "appears on screen and
+   responds". The two parts of component 21 that A1 and A2 of
+   `.reports/accountability-ensurance.md` found unexecuted — the pkexec
+   exit-status mapping, and `Monitor#stop` against a subprocess that ignores
+   the signal — are now driven in `drive_bustle.rb` against a fabricated exit
+   status and a child that traps `SIGTERM`.
 2. **One bindings question is settled and one is closed.** `GLib.format_size`
    backs the statistics pane's three size columns and works (driven,
    `drive_bustle.rb:458-463`). `Adwaita::Banner` is no longer used anywhere —
@@ -364,9 +367,11 @@ stack Haskell needs to thread `BConfig`/`BState`, and its content lives in
    strikes were made by reading. The scans themselves have now been run on both
    trees (`.reports/component-identification.md`); it is only the classifier
    that is missing.
-4. **Two upstream components have no `lib/*.rb` of their own**, by choice rather
-   than omission: `promptToSave`'s alert dialog lives inside
-   `lib/bustle/window.rb`, and `recorderChooseFile`'s save chooser inside
-   `lib/bustle/recorder.rb`. Both match where upstream puts them (`UI.hs` and
-   `UI/Recorder.hs` respectively are not widget classes), but it means the
-   one-upstream-file-to-one-`lib`-file rule is not literally 1:1 here.
+4. **Two upstream components have no `lib/*.rb` of their own.** I put
+   `promptToSave`'s alert dialog inside `lib/bustle/window.rb` and
+   `recorderChooseFile`'s save chooser inside `lib/bustle/recorder.rb`, which
+   is where upstream keeps them too — they are functions in `UI.hs` and
+   `UI/Recorder.hs`, not widget classes with files of their own. So the
+   one-upstream-file-to-one-`lib`-file rule does not read as 1:1 for these
+   two: the mapping is file-to-file, and these two components are parts of
+   files, in both trees.
