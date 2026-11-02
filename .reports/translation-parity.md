@@ -2,298 +2,292 @@
 
 | | |
 |---|---|
-| Upstream | `master` @ `0a8cf38` |
-| Port | `ruby` @ `16f6787` |
-| Domain | `bustle` (upstream: `GetText_bustle`/`getMessageCatalogDomain`, `src-hgettext/Bustle/Translation.hs:12-20`; port: `lib/bustle/translation.rb:8`) |
-| Upstream messages | 74 |
-| Ported | 73 |
-| Gaps | 1 |
-| Extra (untranslated) | 15 |
-| Upstream languages | 1 `.po` (`en`), 33 translated / 3 untranslated of 36 |
-| Languages shipped by the port | 1 `.po` (`en`), 33 translated / 3 untranslated of 36 |
-| Build command | `rake translation:*` (`rakelib/translation.rake`) |
+| Upstream | `origin/master` @ `0a8cf38` |
+| Port | `ruby` @ `6e6fccb` |
+| Domain | **none** — the port reads `po/*.po` at runtime instead of binding a gettext domain. See *Delivery* |
+| Upstream messages | **66** (distinct `(msgctxt, msgid)` keys in `po/messages.pot`) |
+| Ported | **65** |
+| Gaps | **1** |
+| Extra (untranslated by definition) | **23** |
+| Upstream occurrences | 81 reference sites over 66 messages (3 reused: `Bustle` ×3, `_Record` ×2, `Draw sequence diagrams of D-Bus activity` ×2) |
+| Port occurrences | 108 reference sites over 88 messages; 90 call sites in `lib/` and `exe/` over 76 keys |
+| Upstream languages | **1** `.po` file (`en`), 35 translated, 0 untranslated, 0 fuzzy, 0 obsolete; `LINGUAS` matches |
+| Languages shipped by the port | **1** (`en`), **all 35 translations byte-identical** |
+| Plurals | 0 upstream, 0 in the port |
+| `msgctxt` | 0 upstream, 0 in the port |
+| Build command | `nix develop --command rake po:pot` (extract); `rake data:merge` (merge into the desktop entry and the appdata) |
+| On-screen check | **run** — see *Delivery* |
 
-## How the census was taken, and two scanner defects
+`en` is the whole catalogue: it translates Will Thompson's English into Will
+Thompson's English (`'%s'` → `‘%s’`, `-` → `–`), which is small but is the only
+donated work in the directory, and all 35 entries survive.
 
-`scripts/msgid-census.sh` could not be used as-is on either side, and both
-failures matter because either one alone produces a report that looks clean.
+## How the census was taken
 
-**Defect 1 — the port's marker is invisible.** The port routes every string
-through `Bustle._("…")` (`lib/bustle/translation.rb`), a module-function call.
-The scanner's Ruby pattern wants a bare `_(`, so it matched **zero** rows in
-`lib/` — all 143 port rows came from `po/`. Adding `Bustle._(`-style
-qualified markers (`[A-Za-z_][A-Za-z0-9_]*\._\(`) would fix it. Until then,
-running this skill on this port and comparing `cut -f1,2` over the whole census
-silently compares the port's `.pot` against itself and reports parity.
+`msgid-census.sh` was run on both trees and **neither output is usable on its
+own**:
 
-**Defect 2 — Haskell is not read.** Upstream marks with `__ "…"`
-(`Bustle/Translation.hs`), which the scanner does not know, so the upstream
-census returned 45 keys — the three `.ui` files, the `.desktop.in` and the
-AppStream metainfo — and none of the Haskell.
+- On upstream it reads the three `.ui` files, the two `.in` files and `po/`, and
+  **nothing from the Haskell**: upstream's marker is `__ "…"` (a function from
+  `Bustle.Translation`), which is in none of the script's eleven marker sets. 32
+  of upstream's call sites are invisible to it.
+- On the port it finds **8** keys outside `po/`, all of them in `data/`, and none
+  of the 76 in `lib/` and `exe/`: the port's marker is `Bustle._("…")` /
+  `_("…")`, and the script's `_` pattern does not match a receiver-qualified call.
 
-So the authoritative key sets here are:
+So the two catalogues were taken as follows, and the discrepancy is stated rather
+than reconciled away:
 
-- **upstream** = the source census (45) ∪ the committed `po/messages.pot` (66) = **74**
-- **port** = the port's generated `po/messages.pot` (**88**), cross-checked by grepping each upstream key against `lib/` directly
+- **Upstream**: `po/messages.pot` (66 keys), cross-checked against a hand grep of
+  `__ "…"` across `*.hs` (32 sites, 30 distinct keys, all present in the `.pot`)
+  and against the `.ui`/`.in` rows the census did find.
+- **Port**: a hand extraction of every `(Bustle.)?_("…")` literal in `lib/` and
+  `exe/` (76 keys, 90 sites, string continuations folded) plus the `data/` rows
+  from the census, cross-checked against the committed `po/messages.pot` (88
+  keys).
 
-Both defects are owed back to the `translation-parity` skill. Neither YAML
-document was hand-edited; the counts above come from the union just described,
-and this paragraph is the statement the skill requires when rows do not come
-from the generated artifact.
+Both scanner holes are reported under *Scanner defects*.
 
-**Upstream's `.pot` is stale and incomplete.** `POT-Creation-Date: 2018-11-15`,
-and it is missing eight strings upstream's own source marks as translatable:
+### The `.pot` cross-check, and what it found upstream
 
-```
-Address:                                              data/RecordAddressDialog.ui:73
-Open a Pair of Logs                                   data/OpenTwoDialog.ui:7
-Record Address                                        data/RecordAddressDialog.ui:7
-Select session bus log                                data/OpenTwoDialog.ui:110
-Select system bus log                                 data/OpenTwoDialog.ui:75
-Session bus log:                                      data/OpenTwoDialog.ui:103
-System bus log:                                       data/OpenTwoDialog.ui:91
-e.g. unix:abstract=/tmp/dbus-E5RlEB5Tzu,guid= …       data/RecordAddressDialog.ui:88
-```
+Upstream's `po/messages.pot` carries `POT-Creation-Date: 2018-11-15`, the same day
+as upstream's last release, so it is a usable snapshot. Comparing it against a
+source scan turns up a real upstream bug:
 
-Every one is in `data/OpenTwoDialog.ui` or `data/RecordAddressDialog.ui`, so
-neither file is reaching upstream's extraction — `xgettext` has never read
-them and no translator has ever been offered those eight strings. This is the
-third of the skill's three cases: *only in the source, present in no po at
-all.* It is **an upstream bug, today**, and it should be reported there.
+**Eight msgids marked `translatable="yes"` upstream have never been extracted, in
+any language, ever.** Every string in `data/OpenTwoDialog.ui` and
+`data/RecordAddressDialog.ui` is absent from `messages.pot` — upstream's
+`Makefile` gettext rules read `data/bustle.ui` and the two `.in` files and not
+those two:
 
-The port carries all eight anyway, in its own `.pot`, so it offers
-translations upstream cannot. That is the right direction for the difference
-to run.
+`Address:`, `e.g. unix:abstract=/tmp/dbus-E5RlEB5Tzu,guid= b1c1921b62283b7b612b57305b20cc28`,
+`Open a Pair of Logs`, `Record Address`, `Select session bus log`,
+`Select system bus log`, `Session bus log:`, `System bus log:`.
 
-## Languages
+The port emits all eight (`open_two_dialog.rb:71, 112, 114, 172, 173`,
+`record_address_dialog.rb:63, 98, 109`) and lists them under **Extra**, because
+they are keys upstream's catalogue does not have. That is the one place this port
+can hand translators something upstream never did, and it is the right direction
+for the difference to run. Worth reporting upstream.
 
-```
-$ diff <(ls up/po/*.po | xargs -n1 basename -s .po) <(cat up/po/LINGUAS)   # clean
-$ diff <(ls po/*.po    | xargs -n1 basename)        <(ls up/po/*.po | xargs -n1 basename)
-```
+## The gap
 
-Both sides ship exactly `en.po`, both `LINGUAS` files say `en`, and both
-catalogues reconcile identically: 36 `msgid` lines, 3 empty `msgstr`, so 33
-translated, 0 fuzzy. Nothing was destroyed — but there was very little to
-destroy. Upstream Bustle has one language, so this port inherits almost none
-of the donated-translation asset that makes this check expensive elsewhere,
-and the `.po` cross-check that would normally validate the census against what
-translators were handed can only validate 36 of 74 keys here.
+| # | msgctxt | msgid | Kind | Uses | Port site | State | Text still owed |
+|---:|---|---|---|---|---|---|---|
+| 1 | — | `org.freedesktop.Bustle` | single | 1 → 0 | — | **gap** | `org.freedesktop.Bustle` |
 
-## Gap
+Upstream's `data/org.freedesktop.Bustle.desktop.in:5` is `Icon=org.freedesktop.Bustle`,
+and `xgettext --language=Desktop` extracts the `Icon` key, so the icon name is a
+msgid in upstream's catalogue (`po/messages.pot:247-249`, referencing
+`desktop.in:6`). The port's `data/org.rubygtkproject.Bustle.desktop.in:5` is
+`Icon=org.rubygtkproject.Bustle` and `rake po:pot` does not extract it, so the
+port's catalogue has no counterpart key.
 
-| # | msgctxt | msgid | Kind | Uses | Port site | State |
-|---|---|---|---|---|---|---|
-| 1 | — | `org.freedesktop.Bustle` | single | 1 → 0 | — | **gap** |
+Copying upstream's bytes would be wrong twice over — it names an icon this port
+does not ship, and a translated `Icon=` would point at a file that exists in no
+theme. Closing the row properly means either marking the port's own icon name the
+way upstream's extraction marks its own, so the key set is the same shape, or
+getting upstream's row deleted as the extraction artefact it almost certainly is.
+Either way **the row stays a gap until the key sets match**; this is the second
+audit it has survived, and nothing in the repository is making it smaller.
 
-`text_owed: org.freedesktop.Bustle`
+## Ported — by upstream source file
 
-Upstream marks the `Icon=` value of its desktop entry as translatable —
-`data/org.freedesktop.Bustle.desktop.in:6`, extracted at
-`po/messages.pot:248`. The port's entry is
-`data/org.rubygtkproject.Bustle.desktop.in` and its `Icon=` line is not
-marked, so the key is not produced.
+All 65 remaining upstream keys are produced by the port, byte for byte. Grouped
+by the upstream file the `.pot` lists first, with the port file opposite.
 
-Copying upstream's bytes would be wrong — the string is an icon name, and
-`org.freedesktop.Bustle` is an icon this port does not ship. The row stays a
-gap because the port produces no counterpart key at all; closing it means
-either marking the port's own icon name the way upstream marks its own, or
-getting upstream's row deleted as the extraction bug it almost certainly is. It
-is not closed by deciding it does not apply.
+### `Bustle/StatisticsPane.hs` → `lib/bustle/statistics_pane.rb` (15 messages)
 
-## Ported — grouped by upstream source
+| msgid | Uses | Port site | State |
+|---|---|---|---|
+| `Member` | 2 → 3 | `statistics_pane.rb:154, 191` (+ `details_view.rb:77`) | ported |
+| `Method` | 2 → 2 | `statistics_pane.rb:169, 315` | ported |
+| `Signal` | 2 → 3 | `statistics_pane.rb:316, 325`, `details_view.rb:148` | ported |
+| `Frequency` | 1 → 1 | `statistics_pane.rb:165` | ported |
+| `Total` | 1 → 1 | `statistics_pane.rb:175` | ported |
+| `%.1f ms` | 2 → 2 | `statistics_pane.rb:176, 186` | ported |
+| `Calls` | 1 → 1 | `statistics_pane.rb:181` | ported |
+| `Mean` | 2 → 2 | `statistics_pane.rb:185, 201` | ported |
+| `Method call` | 1 → 2 | `statistics_pane.rb:322`, `details_view.rb:131` | ported |
+| `Method return` | 1 → 2 | `statistics_pane.rb:323`, `details_view.rb:132` | ported |
+| `Error` | 1 → 3 | `statistics_pane.rb:324`, `details_view.rb:133`, `pcap_loader.rb:75` | ported |
+| `Smallest` | 1 → 1 | `statistics_pane.rb:197` | ported |
+| `Largest` | 1 → 1 | `statistics_pane.rb:205` | ported |
+| `Frequencies` / `Durations` / `Sizes` | 1 → 1 each | `statistics_pane.rb:86-88` | ported |
 
-### `data/bustle.ui` → `lib/bustle/{header_bar,welcome_page,please_hold_page,error_bar,details_view,statistics_pane,menus}.rb` (30 messages)
+### `Bustle/UI.hs` → `lib/bustle/window.rb`, `header_bar.rb`, `recorder.rb` (8 messages)
 
-| # | msgid | Kind | Uses | Port site | State |
-|---|---|---|---|---|---|
-| 2 | `Bustle` | single | 1 → 2 | `window.rb:207`, `about_dialog.rb:49` | ported |
-| 3 | `_Record` | single | 1 → 1 | `header_bar.rb:156` | ported |
-| 4 | `_Stop` | single | 1 → 1 | `header_bar.rb:161` | ported |
-| 5 | `Record a new log` | single | 1 → 1 | `header_bar.rb:145` | ported |
-| 6 | `Open an existing log` | single | 1 → 1 | `header_bar.rb:170` | ported |
-| 7 | `Save` | single | 1 → 2 | `header_bar.rb:178`, `window.rb:402` | ported |
-| 8 | `Export as PDF` | single | 1 → 1 | `header_bar.rb:192` | ported |
-| 9 | `Welcome to Bustle` | single | 1 → 1 | `welcome_page.rb:23` | ported |
-| 10 | `Start recording D-Bus activity with the <b>Record</b> button above\n You can also run <i>dbus-monitor --pcap</i> from the command line` | single | 1 → 1 | `welcome_page.rb:45-46` | ported |
-| 11 | `<big><b>Waiting for D-Bus traffic; please hold…</b></big>` | single | 1 → 1 | `please_hold_page.rb:43` | ported |
-| 12 | `Frequencies` | single | 1 → 1 | `statistics_pane.rb:70` | ported |
-| 13 | `Durations` | single | 1 → 1 | `statistics_pane.rb:71` | ported |
-| 14 | `Sizes` | single | 1 → 1 | `statistics_pane.rb:72` | ported |
-| 15 | `Type` | single | 1 → 1 | `details_view.rb:69` | ported |
-| 16 | `Path` | single | 1 → 1 | `details_view.rb:75` | ported |
-| 17 | `Member` | single | 1 → 3 | `details_view.rb:77`, `statistics_pane.rb:137`, `:168` | ported |
-| 18 | `Arguments` | single | 1 → 1 | `details_view.rb:79` | ported |
-| 19 | `Sender` | single | 1 → 1 | `details_view.rb:71` | ported |
-| 20 | `Destination` | single | 1 → 1 | `details_view.rb:73` | ported |
-| 21 | `Method call` | single | 1 → 2 | `details_view.rb:123`, `statistics_pane.rb:296` | ported |
-| 22 | `Method return` | single | 1 → 2 | `details_view.rb:124`, `statistics_pane.rb:297` | ported |
-| 23 | `Error` | single | 1 → 2 | `details_view.rb:125`, `statistics_pane.rb:298` | ported |
-| 24 | `Signal` | single | 1 → 3 | `details_view.rb:143`, `statistics_pane.rb:291`, `:299` | ported |
-| 25 | `Directed signal` | single | 1 → 1 | `details_view.rb:141` | ported |
-| 26 | `_Filter Visible Services…` | single | 1 → 1 | `menus.rb:97` | ported |
-| 27 | `_Statistics` | single | 1 → 1 | `menus.rb:98` | ported |
-| 28 | `Record S_ession Bus` | single | 1 → 1 | `menus.rb:76` | ported |
-| 29 | `Record S_ystem Bus` | single | 1 → 1 | `menus.rb:77` | ported |
-| 30 | `Record _Address…` | single | 1 → 1 | `menus.rb:78` | ported |
-| 31 | `O_pen a Pair of Logs…` | single | 1 → 1 | `menus.rb:86` | ported |
-| 32 | `Display two logs—one for the session bus, one for the system bus—side by side.` | single | 1 → 1 | `open_two_dialog.rb:99-100` | ported |
+| msgid | Uses | Port site | State |
+|---|---|---|---|
+| `Could not read '%s'` | 1 → 1 | `window.rb:179` | ported |
+| `Logged <b>%u</b> messages` | 1 → 1 | `header_bar.rb:94` | ported |
+| `Recording %s&#8230;` | 1 → 1 | `recorder.rb:92` | ported |
+| `Couldn't save log: ` | 1 → 1 | `window.rb:389` | ported |
+| `You might want to manually recover the log from the temporary file at "%s".` | 1 → 1 | `window.rb:394` | ported |
+| `Save log '%s' before closing?` | 1 → 1 | `window.rb:411` | ported |
+| `If you don't save, this log will be lost forever.` | 1 → 1 | `window.rb:417` | ported |
+| `Close _Without Saving` | 1 → 1 | `window.rb:419` | ported |
+| `Couldn't export log as PDF: ` | 1 → 1 | `pdf_export.rb:55` | ported |
 
-Row 10 carries the one real risk on this axis and it survived: the msgid holds
-its own `<b>`/`<i>` markup **and** an embedded `\n`, split across two Ruby
-string literals (`welcome_page.rb:45-46`). The concatenation reproduces
-upstream's bytes exactly, newline included. Row 11 likewise keeps
-`<big><b>…</b></big>` inside the key rather than wrapping a shorter string in
-markup — which is why `please_hold_page.rb` uses a markup `Gtk::Label` instead
-of an `AdwStatusPage` title.
+### `data/bustle.ui` → `menus.rb`, `header_bar.rb`, `welcome_page.rb`, `please_hold_page.rb`, `details_view.rb` (24 messages)
 
-### `data/OpenTwoDialog.ui` → `lib/bustle/open_two_dialog.rb` (5 messages)
+`_Filter Visible Services…`, `_Statistics`, `O_pen a Pair of Logs…`,
+`Record S_ession Bus`, `Record S_ystem Bus`, `Record _Address…` (`menus.rb:72-99`);
+`_Record`, `_Stop`, `Record a new log`, `Open an existing log`, `Export as PDF`,
+`Save` (`header_bar.rb:138-200`);
+`Welcome to Bustle`, `Start recording D-Bus activity with the <b>Record</b> button above\n You can also run <i>dbus-monitor --pcap</i> from the command line`
+(`welcome_page.rb:24, 45`);
+`<big><b>Waiting for D-Bus traffic; please hold…</b></big>` (`please_hold_page.rb:43`);
+`Type`, `Path`, `Member`, `Arguments`, `Sender`, `Destination`, `Directed signal`
+(`details_view.rb:69-80, 146`);
+`Display two logs—one for the session bus, one for the system bus—side by side.`
+(`open_two_dialog.rb:107`). All **ported**.
 
-| # | msgid | Uses | Port site | State |
-|---|---|---|---|---|
-| 33 | `Open a Pair of Logs` | 1 → 1 | `open_two_dialog.rb:63` | ported |
-| 34 | `Session bus log:` | 1 → 1 | `open_two_dialog.rb:105` | ported |
-| 35 | `System bus log:` | 1 → 1 | `open_two_dialog.rb:107` | ported |
-| 36 | `Select session bus log` | 1 → 1 | `open_two_dialog.rb:171` | ported |
-| 37 | `Select system bus log` | 1 → 1 | `open_two_dialog.rb:172` | ported |
-
-### `data/RecordAddressDialog.ui` → `lib/bustle/record_address_dialog.rb` (3 messages)
-
-| # | msgid | Uses | Port site | State |
-|---|---|---|---|---|
-| 38 | `Record Address` | 1 → 1 | `record_address_dialog.rb` | ported |
-| 39 | `Address:` | 1 → 1 | `record_address_dialog.rb` | ported |
-| 40 | `e.g. unix:abstract=/tmp/dbus-E5RlEB5Tzu,guid= b1c1921b62283b7b612b57305b20cc28` | 1 → 1 | `record_address_dialog.rb` | ported |
-
-Row 40 carries a translator comment upstream (*"Just translate the 'e.g.';
-leave the rest untouched."*) and the port keeps it, on the group description
-that stands in for `AdwEntryRow`'s missing placeholder.
-
-### `Bustle/UI.hs` → `lib/bustle/{window,header_bar,recorder,pdf_export}.rb` (9 messages)
-
-| # | msgid | Uses | Port site | State |
-|---|---|---|---|---|
-| 41 | `Could not read '%s'` | 1 → 1 | `window.rb:175` | ported |
-| 42 | `Logged <b>%u</b> messages` | 1 → 1 | `header_bar.rb:93` | ported |
-| 43 | `Recording %s&#8230;` | 1 → 1 | `recorder.rb:92` | ported |
-| 44 | `Couldn't save log: ` | 1 → 1 | `window.rb:392` | ported |
-| 45 | `You might want to manually recover the log from the temporary file at \"%s\".` | 1 → 1 | `window.rb:389-394` | ported |
-| 46 | `Save log '%s' before closing?` | 1 → 1 | `window.rb:408` | ported |
-| 47 | `If you don't save, this log will be lost forever.` | 1 → 1 | `window.rb:402` | ported |
-| 48 | `Close _Without Saving` | 1 → 1 | `window.rb:416` | ported |
-| 49 | `Couldn't export log as PDF: ` | 1 → 1 | `pdf_export.rb:55` | ported |
-
-Rows 44, 45 and 49 are the ones that are normally wrong. All three are
-concatenation sites upstream (`__ "Couldn't save log: " ++ …`), so the key ends
-in a space that a port is very likely to tidy away or fold into a `%s`. Both
-trailing spaces survive, and row 45 keeps upstream's escaped inner quotes
-(`\"%s\"`) rather than converting them to Ruby's bare quotes.
+The two-line welcome string is the one to watch: its msgid contains a real
+newline, and the port reproduces it with an adjacent-literal continuation
+(`welcome_page.rb:45-46`) so the key is byte-identical rather than two keys.
 
 ### `Bustle/UI/FilterDialog.hs` → `lib/bustle/filter_dialog.rb` (1 message)
 
-| # | msgid | Uses | Port site | State |
-|---|---|---|---|---|
-| 50 | `Unticking a service hides its column in the diagram, and all messages it is involved in. That is, all methods it calls or are called on it, the corresponding returns, and all signals it emits will be hidden.` | 1 → 1 | `filter_dialog.rb:180-185` | ported |
+`Unticking a service hides its column in the diagram, and all messages it is
+involved in. …` — `filter_dialog.rb:226`, assembled from four adjacent literals so
+the key matches upstream's Haskell string gap. **ported.**
 
-Four Haskell string-gap continuations upstream, four Ruby literals here, same
-bytes.
+### `Bustle/UI/AboutDialog.hs` → `lib/bustle/about_dialog.rb` (2 messages)
 
-### `Bustle/UI/AboutDialog.hs` → `lib/bustle/about_dialog.rb` (1 message)
-
-| # | msgid | Uses | Port site | State |
-|---|---|---|---|---|
-| 51 | `Someone's favourite D-Bus profiler` | 1 → 1 | `about_dialog.rb:51` | ported |
-
-British spelling kept.
-
-### `Bustle/StatisticsPane.hs` → `lib/bustle/statistics_pane.rb` (9 messages)
-
-| # | msgid | Uses | Port site | State |
-|---|---|---|---|---|
-| 52 | `Frequency` | 1 → 1 | `statistics_pane.rb:145` | ported |
-| 53 | `Method` | 2 → 2 | `statistics_pane.rb:147`, `:290` | ported |
-| 54 | `Total` | 1 → 1 | `statistics_pane.rb:153` | ported |
-| 55 | `Calls` | 1 → 1 | `statistics_pane.rb:159` | ported |
-| 56 | `Mean` | 2 → 2 | `statistics_pane.rb:161`, `:177` | ported |
-| 57 | `%.1f ms` | 2 → 2 | `statistics_pane.rb:155`, `:163` | ported |
-| 58 | `Smallest` | 1 → 1 | `statistics_pane.rb:173` | ported |
-| 59 | `Largest` | 1 → 1 | `statistics_pane.rb:181` | ported |
-| 60 | `Member` | — | (row 17) | ported |
-
-Row 53 and row 56 are each two distinct call sites for one key — `Method` as a
-column title and as a tally kind, `Mean` in the durations table and in the
-sizes table. Upstream reaches each key twice too, and neither was merged.
+`Bustle` (`about_dialog.rb:49`), `Someone's favourite D-Bus profiler`
+(`about_dialog.rb:51`). **ported.**
 
 ### `Bustle/Noninteractive.hs` → `lib/bustle/noninteractive.rb` (2 messages)
 
-| # | msgid | Uses | Port site | State |
-|---|---|---|---|---|
-| 61 | `Couldn't parse '%s': %s` | 1 → 1 | `noninteractive.rb:62` | ported |
-| 62 | `(no interface)` | 1 → 1 | `noninteractive.rb:93` | ported |
+`Couldn't parse '%s': %s` (`noninteractive.rb:62`), `(no interface)`
+(`noninteractive.rb:93`). **ported.**
 
-### `data/*.desktop.in` and `data/*.appdata.xml.in` (11 messages)
+### `Bustle/Util.hs` → `lib/bustle/util.rb` (1 message)
 
-| # | msgid | Uses | Port site | State |
-|---|---|---|---|---|
-| 63 | `Bustle` | — | (row 2) + `*.desktop.in:2` | ported |
-| 64 | `Draw sequence diagrams of D-Bus activity` | 2 → 2 | `*.desktop.in:3`, `*.appdata.xml.in` | ported |
-| 65 | `debug;profile;d-bus;dbus;sequence;monitor;` | 1 → 1 | `*.desktop.in:10` | ported |
-| 66 | `Explore sequence diagrams of D-Bus activity` | 1 → 1 | `*.appdata.xml.in` | ported |
-| 67 | `Bustle draws sequence diagrams of D-Bus activity. …` | 1 → 1 | `*.appdata.xml.in` | ported |
-| 68 | `Relax with this soothing greyscale welcome page` | 1 → 1 | `*.appdata.xml.in` | ported |
-| 69 | `See statistics summarizing the log` | 1 → 1 | `*.appdata.xml.in` | ported |
-| 70–74 | the five release-note paragraphs upstream's `.pot` carries | 1 → 1 each | `*.appdata.xml.in` | ported |
+`Warning: ` (`util.rb:19`), trailing space included. **ported.**
 
-Row 65 keeps the trailing semicolon, which a `.desktop` `Keywords` list needs
-and a retyping loses. Rows 70–74 are `<release>` description paragraphs that
-upstream's `.pot` does extract; the port carries them and adds its own, which
-are listed as extras below.
+### `data/*.in` → `data/org.rubygtkproject.Bustle.{desktop,appdata.xml}.in` (13 messages)
 
-## Extra (port-only keys — untranslated by definition)
+`Bustle`, `Draw sequence diagrams of D-Bus activity`,
+`debug;profile;d-bus;dbus;sequence;monitor;`, the long AppStream description,
+`Explore sequence diagrams of D-Bus activity`,
+`See statistics summarizing the log`,
+`Relax with this soothing greyscale welcome page`, and the six release-note
+paragraphs from upstream's 0.7.x entries. All **ported** — the port's appdata
+carries upstream's `<release>` history verbatim and adds its own 0.1.0 entry.
 
-Fifteen keys exist in the port and in no upstream catalogue, so no translator
-has ever been offered them. They do not block parity, and they are strings the
-port owes translators rather than strings it owes upstream.
+> Note: the release notes are in both `.pot` files but in **neither** census, on
+> either side: the census excludes `<release>` descriptions per xgettext's ITS
+> rules, while both `.pot` files were produced by extractors that include them.
+> They were compared pot-to-pot.
 
-| msgid | Why it exists | Component row |
-|---|---|---|
-| `_Open…` | upstream's Open item is the `gtk-open` stock label, translated by GTK itself | menus |
-| `_Cancel` | upstream's `gtk-cancel` | open-a-pair, save prompt |
-| `_Open` | upstream's `gtk-open` on the pair dialog | open-a-pair |
-| `_Close` | upstream's InfoBar close button is GTK's own | error bar |
-| `_About Bustle` | upstream's `gtk-about` | menus |
-| `Main Menu` | tooltip the port added | main window |
-| `Open a Log` | upstream's open chooser has no title | open dialog |
-| `D-Bus logs` | file filter the port added | open dialog |
-| `All files` | file filter the port added | open dialog |
-| `Choose…` | `GtkFileChooserButton` showed the filename itself | open-a-pair |
-| `(none chosen)` | same | open-a-pair |
-| `Filter Visible Services` | upstream's filter dialog has no title | filter dialog |
-| `Empty or truncated file` | loader error the port words itself | pcap loader |
-| `This is the Ruby GTK4 and Libadwaita port of Bustle.` | port's own appdata | — |
-| `First release of the Ruby port: …` | port's own release note | — |
+## Uses mismatches — investigated, none open
 
-Nine of the fifteen replace a string GTK or libadwaita already translates into
-every language it ships. Each one is a button that reads correctly in English
-and in nothing else, where upstream's read correctly everywhere — so they are
-a translation regression even though the key-set check cannot call them one.
-They are recorded against their components in `component-parity.md`.
+Per the skill these are component questions, not translation rows. All three
+upstream reuse cases resolve:
 
-## Uses
+| msgid | Upstream | Port | Finding |
+|---|---:|---:|---|
+| `Bustle` | 3 (`AboutDialog.hs:46`, `bustle.ui:101`, `desktop.in`+`appdata`) **plus `Bustle.hs:55`** | 4 | **one call site missing**: `setApplicationName (__ "Bustle")` has no counterpart. The key is still in the catalogue, so this is `ported` here and a component gap there — `.reports/component-parity.md` **G6** |
+| `_Record` | 2 (`bustle.ui:149`, `RecordAddressDialog.ui:39`) | 2 (`header_bar.rb:151`, `record_address_dialog.rb:89`) | accounted for |
+| `Draw sequence diagrams of D-Bus activity` | 2 (`desktop.in`, `appdata`) | 2 | accounted for |
 
-Upstream reaches 74 keys from 80 call sites (6 reused). The port reaches 88
-keys from 98 call sites. No shared key is `plural` on one side and `single` on
-the other — upstream has no `ngettext`/`n_()` call anywhere, which is itself
-worth knowing: `Logged <b>%u</b> messages` is a singular-only msgid upstream,
-and the port correctly did **not** "improve" it into a plural form, because
-doing so would have changed the key.
+## Extra — 23 keys the port emits that upstream never had
 
-Three keys gain call sites in the port (`Bustle` 1→2, `Save` 1→2, `Member`
-1→3, `Signal` 1→3). Each is a component question, not a translation one, and
-each is accounted for in the tables above.
+Each one is English until somebody translates it, and nobody will: a fork is not
+registered with l10n.gnome.org.
 
-## Verdict
+**Eight are upstream's own strings that upstream never extracted** (see the
+`.pot` cross-check above) and are the good kind of extra: `Address:`, the
+`e.g. unix:abstract=…` hint, `Open a Pair of Logs`, `Record Address`,
+`Select session bus log`, `Select system bus log`, `Session bus log:`,
+`System bus log:`.
 
-`parity: false` — 1 gap, and the domain and language set match. The 15 extras
-and the 4 `uses` differences do not block parity and are reported for the
-ledgers that own them.
+**Nine replace GTK3 stock ids, which GTK4 deleted.** Upstream wrote `gtk-open`,
+`gtk-cancel`, `gtk-close`, `gtk-about`, `gtk-save` and `gtk-new` and got GTK's own
+translated labels for free; GTK4 has no stock items, so each had to become a real
+msgid: `_Open`, `_Open…`, `_Cancel`, `_Close`, `_About Bustle`, `Choose…`,
+`Main Menu`, `(none chosen)`, `Filter Visible Services`. These are the port's
+to translate now, and nine labels in English is the price of GTK4.
+
+**Four name things the port builds that upstream's `.ui` did not name**:
+`Open a Log` (the open chooser's title, which upstream leaves `Nothing`),
+`D-Bus logs` and `All files` (file filters, from the MIME type the desktop entry
+already claims — upstream sets no filters at all), and `Empty or truncated file`
+(`pcap_loader.rb`).
+
+**Two are the port's own release note** in the AppStream file: the 0.1.0
+description and `This is the Ruby GTK4 and Libadwaita port of Bustle.`
+
+## Delivery
+
+Checked, not assumed.
+
+- **`domain_matches` cannot hold, and that is a real finding.** There is no
+  gettext domain: `lib/bustle/translation.rb` parses `po/<lang>.po` at runtime
+  (`:72-100`) and `Bustle._` looks the msgid up in that hash (`:118`). The skill
+  accepts a runtime reader as *delivery* — the requirement is that the strings
+  reach the user — while recording what it costs, and here the costs are:
+  no `msgfmt -c` validation of the catalogue, no plural-forms engine
+  (`tr(msgid)` takes one argument), no `msgctxt` support, and no `.mo` install
+  rule for a distribution to hook. Upstream's catalogue has no plurals and no
+  contexts, so nothing is broken **today**; the first upstream plural would be
+  silently untranslatable. Open item, not waved through.
+- **The catalogue reaches the screen.** Driven headless, the real
+  `Bustle::Window` loading a missing log under two locales:
+  - `LANG=LC_ALL=en_GB.UTF-8` → the error bar's title label is
+    `<b>Could not read ‘/nonexistent/log.pcap’</b>` — the **translated** string,
+    with `en_GB` falling back to the `en` catalogue as gettext would.
+  - `LANG=LC_ALL=de_DE.UTF-8` → `<b>Could not read &apos;…&apos;</b>` — the
+    untranslated msgid, which is the correct fallback for a language the port
+    (and upstream) does not ship.
+  This is the check the skill calls "the only one that is not a document", and it
+  passes.
+- **`Translation.init` is called from one place only** — `main.rb:46`. `exe/bustle`
+  reaches it; `exe/bustle-pcap` does not, which matches upstream (`bustle-pcap.c`
+  has no `setlocale`/`textdomain` call and none of its strings are marked).
+- **`LINGUAS` matches the `.po` files** on both sides (`en`, one file).
+- **No `POTFILES.in`** on either side: upstream's extraction is a `Makefile` rule
+  naming three files, and the port's is `rakelib/translation.rake` globbing
+  `lib/`, `exe/` and `data/`. A glob cannot fall through the hole upstream's
+  hand-written list fell through, which is why the port picks up the eight
+  strings upstream missed. There is nothing for a POTFILES completeness check to
+  check.
+- **`msgfmt` was not run** — it is not in the dev shell, and the port needs no
+  `.mo`. Named as unrun.
+
+## The committed `.pot` is stale
+
+`rake po:pot` regenerates `po/messages.pot` with the **same 88 keys** — no msgid
+has drifted — but with 35 changed `#:` reference blocks, and one of them is
+substantive: the committed file still credits `lib/bustle/error_bar.rb:51` with
+`_Close`, which that file has not said since the error bar stopped being an
+`Adwaita::Banner` with a labelled button. The references in a committed `.pot`
+are what a translator uses to find the string in context, and nothing in the
+repository runs `rake po:pot` as a check, so they rot silently. The regenerated
+file was **not** committed with this audit so the finding stays visible; closing
+it is `rake po:pot` plus a CI step that fails on a dirty `po/`.
+
+## Scanner defects
+
+Both should be fixed in the skill, not worked around again here.
+
+1. **`msgid-census.sh` cannot see the port's own marker.** The port writes
+   `Bustle._("…")` from outside the module and `_("…")` from inside it. The
+   script's `_` pattern requires the marker not to be preceded by an identifier
+   character, which a `.` satisfies — but the receiver `Bustle` makes the whole
+   token `Bustle._`, and the pattern does not allow a qualified receiver. Result:
+   **0 of 76** keys in `lib/` and `exe/` are found, and the port reads as having
+   no translatable strings at all, which would be the single most misleading
+   output this skill can produce. Allowing an optional `[A-Z][A-Za-z0-9_]*\.`
+   prefix fixes it.
+2. **`msgid-census.sh` cannot see Haskell's marker.** Upstream's is `__ "…"`
+   (`src-hgettext/Bustle/Translation.hs`), with a space before the string and no
+   parentheses. 32 call sites are invisible, which on a Haskell GNOME app means
+   the entire source side of the catalogue. Adding `__` to the marker list and
+   allowing a space-separated argument covers it.
+3. **Minor, in the skill's own tooling contract:** `catalogue.rb --compare` was
+   not run, because with both censuses this wrong its output would be fiction.
+   The numbers in this ledger's header therefore come from the hand census and
+   the two `.pot` files; no YAML was generated, and none was hand-edited.

@@ -343,21 +343,27 @@ stack Haskell needs to thread `BConfig`/`BState`, and its content lives in
 
 ## Blockers
 
-1. **No widget code in this port has ever been run.** `FINDINGS.md` records that
-   every file requiring `adwaita`/`gtk4` has only had `ruby -c` over it. The
-   inventory above is a reading of the source on both sides, not of two running
-   apps. Until the dev shell is used to launch the app, "present" means "built
-   in `lib/`", not "appears on screen".
-2. **Two bindings questions could take a component down at runtime**, both in
-   `FINDINGS.md`: `Adwaita::Banner#use_markup` (libadwaita ≥ 1.7 only) is on the
-   path of every error message, and `GLib.format_size` backs the statistics
-   pane's three size columns.
-3. **The symbol table was not built.** `gir-symbols.sh` needs the GTK `.gir`
-   files, which the ambient shell does not have; upstream is Haskell with its
-   widget tree in GtkBuilder XML, so the inventory was taken by reading the
-   three `.ui` files and the `builderGetObject` call sites instead of by
-   scanning. A scan of the Ruby side for a counted TSV diff still wants the dev
-   shell.
+> Corrected at port `6e6fccb` by `.reports/accountability-ensurance.md` finding
+> A5. Items 1 and 2 as first written were false by then and are replaced; item 3
+> is narrowed to the part that is still true.
+
+1. **Every component has now been run.** `test/drive_bustle.rb` walks all 22
+   components with 262 checks and 21 screenshots (`DRIVE OK`), and
+   `test/drive_recording.rb` records a real session bus through the GUI with 6
+   more. "Present" below therefore means "appears on screen and responds", except
+   for the parts of component 21 named in A1 and A2 of that report: the pkexec
+   exit-status mapping and `Monitor#stop` against a subprocess the port may not
+   signal are executed by nothing.
+2. **One bindings question is settled and one is closed.** `GLib.format_size`
+   backs the statistics pane's three size columns and works (driven,
+   `drive_bustle.rb:458-463`). `Adwaita::Banner` is no longer used anywhere —
+   the error bar is a `Gtk::Box` in the error colours — so its `use_markup`
+   version floor is moot; libadwaita in this dev shell is 1.9.3.
+3. **The symbol table is still not built.** `gir-symbols.sh` was not run, so
+   every namespaced match in both scans stayed classified `widget` and the
+   strikes were made by reading. The scans themselves have now been run on both
+   trees (`.reports/component-identification.md`); it is only the classifier
+   that is missing.
 4. **Two upstream components have no `lib/*.rb` of their own**, by choice rather
    than omission: `promptToSave`'s alert dialog lives inside
    `lib/bustle/window.rb`, and `recorderChooseFile`'s save chooser inside
