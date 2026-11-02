@@ -53,6 +53,13 @@ module Bustle
     IO_ERROR_PERMISSION_DENIED = 14
     IO_ERROR_CANCELLED = 19
 
+    # The domain g_spawn_check_wait_status() uses for a child that exited
+    # with a non-zero status, and whose code is that status. Upstream's
+    # subprocess_error is one of these, and handle_error steals it as the
+    # error it emits, so `stopped` carries this domain and the child's exit
+    # status rather than a GIOError.
+    SPAWN_EXIT_ERROR_QUARK = "g-spawn-exit-error"
+
     # The exit statuses pkexec uses, which upstream's handle_error reads back
     # off the subprocess and reports as two quite different things.
     PKEXEC_DISMISSED_STATUS = 126
@@ -83,6 +90,18 @@ module Bustle
 
     # How long #run waits for the pipe before looking at its own flags again.
     POLL_INTERVAL = 0.2
+
+    # Upstream's await_both_errors() waits two seconds for a dbus-monitor
+    # that has been asked to go away, and then emits `stopped` whether or not
+    # the child ever exited — a privileged dbus-monitor cannot be signalled
+    # by the unprivileged process that spawned it, so waiting for it would
+    # mean never stopping.
+    STOP_TIMEOUT_SECONDS = 2
+
+    # How long #close waits for the child to be reaped. A child that has had
+    # SIGTERM, a closed pipe and SIGKILL and is still there is not going to
+    # be waited for: upstream does not wait for it either.
+    JOIN_TIMEOUT = 0.2
 
     class << self
       # Upstream's BusType, as the recorder's three menu items name it: the
@@ -159,23 +178,26 @@ module Bustle
     # turns for us and a command-line recorder has to turn for itself.
     def run
       until @stopped
-        IO.select(
-          [@pipe],
-          nil,
-          nil,
-          POLL_INTERVAL,
-        )
+        wait_for_pipe
         pump
         GLib::MainContext.default.iteration(false)
       end
       self
     end
 
-    # Upstream's bustle_pcap_monitor_stop(): ask the subprocess to go away and
-    # let the next pump flush what is left in the pipe before `stopped` fires.
+    # Upstream's bustle_pcap_monitor_stop(), by way of
+    # cancellable_cancelled_cb(): flush whatever the subprocess has already
+    # written, ask it to go away, close the read end of its stdout so that it
+    # dies of EPIPE if the signal could not reach it, and arm the timeout
+    # that reports `stopped` whether or not it ever exits.
     def stop
       @cancelled = true
-      terminate
+      unless @stopped
+        drain
+        terminate
+        close_pipe
+        arm_stop_timeout
+      end
       self
     end
 
@@ -418,12 +440,57 @@ module Bustle
         end
       end
 
-      def terminate
+      # Blocks until the pipe has something to say, or the poll interval is
+      # up. Once #stop has closed the read end there is nothing to select on,
+      # so the loop just turns the main context until the timeout fires.
+      def wait_for_pipe
+        unless @pipe.nil? || @pipe.closed?
+          IO.select(
+            [@pipe],
+            nil,
+            nil,
+            POLL_INTERVAL,
+          )
+        end
+      rescue IOError
+        nil
+      end
+
+      def terminate(signal = "TERM")
         if @process&.alive?
-          Process.kill("TERM", @process.pid)
+          Process.kill(signal, @process.pid)
         end
       rescue Errno::ESRCH, Errno::EPERM
         nil
+      end
+
+      # Upstream's cancellable_cancelled_cb pcap_close()es the stream it was
+      # reading, which closes the read end of dbus-monitor's stdout; the next
+      # frame dbus-monitor writes then kills it. Here it also ends the read
+      # loop: read_nonblock on a closed pipe raises, which #drain reads as end
+      # of stream and reports as the cancellation it is.
+      def close_pipe
+        unless @pipe.nil? || @pipe.closed?
+          @pipe.close
+        end
+      rescue IOError
+        nil
+      end
+
+      # Upstream's await_both_errors(): after two seconds, emit `stopped`
+      # with whatever is known, exited child or not. The force-exit upstream
+      # does at cancellation time is deferred to here so that a dbus-monitor
+      # which was going to notice the closed pipe gets the chance; one that
+      # has not noticed by now never will, and is not left behind writing
+      # into a pipe nobody holds.
+      def arm_stop_timeout
+        unless @stopped
+          GLib::Timeout.add_seconds(STOP_TIMEOUT_SECONDS) do
+            terminate("KILL")
+            finish
+            false
+          end
+        end
       end
 
       # End of the pipe: the recording is over. A stop the user asked for is
@@ -445,6 +512,12 @@ module Bustle
       # exit is the bus itself going away, which upstream also calls
       # cancellation, with a comment about monitoring a test suite or a
       # session you then log out of.
+      #
+      # Anything else is the subprocess's own error, which upstream emits
+      # unchanged: G_SPAWN_EXIT_ERROR and the exit status. A child killed by a
+      # signal has no exit status to report, so it keeps the GIOError domain
+      # — upstream's would carry G_SPAWN_ERROR, whose numbering the Ruby
+      # bindings do not expose.
       def report_exit(status)
         if @target == SYSTEM_BUS && status&.exitstatus == PKEXEC_DISMISSED_STATUS
           stop_with(IO_ERROR_CANCELLED, "User dismissed polkit authorization dialog")
@@ -452,6 +525,8 @@ module Bustle
           stop_with(IO_ERROR_PERMISSION_DENIED, "Not authorized to monitor system bus")
         elsif status&.exitstatus&.zero?
           stop_with(IO_ERROR_CANCELLED, "dbus-monitor exited cleanly")
+        elsif status&.exitstatus
+          stop_with(status.exitstatus, prefixed(spawn_message(status)), domain: SPAWN_EXIT_ERROR_QUARK)
         else
           stop_with(IO_ERROR_FAILED, prefixed(spawn_message(status)))
         end
@@ -500,13 +575,18 @@ module Bustle
         ""
       end
 
-      def stop_with(code, message)
+      # The domain defaults to GIOError because that is the domain upstream
+      # builds its own errors in — cancellation, a dismissed polkit dialog, a
+      # refused one, an unreadable stream. The one error it does not build but
+      # steals is the subprocess's, and that one arrives with
+      # SPAWN_EXIT_ERROR_QUARK and the child's exit status.
+      def stop_with(code, message, domain: IO_ERROR_QUARK)
         unless @stopped
           @stopped = true
           close
           emit(
             STOPPED,
-            IO_ERROR_QUARK,
+            domain,
             code,
             message,
           )
@@ -519,7 +599,7 @@ module Bustle
             io.close
           end
         end
-        @process&.join
+        @process&.join(JOIN_TIMEOUT)
       rescue IOError
         nil
       end

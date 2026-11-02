@@ -37,6 +37,7 @@ require "bustle/open_two_dialog"
 require "bustle/pcap_cli"
 require "bustle/pdf_export"
 require "bustle/record_address_dialog"
+require "bustle/recorder"
 require "bustle/translation"
 require "bustle/types"
 require "bustle/variant_formatter"
@@ -54,6 +55,16 @@ SCRATCH = Dir.mktmpdir("bustle-drive")
 COVERED = Set.new
 
 def covers(*numbers) = numbers.each { |number| COVERED << number }
+
+# A stand-in for the Process::Status the monitor reads an exit status off, so
+# the three statuses pkexec hands back can be driven without a polkit prompt.
+EXIT_STATUS = Struct.new(:exitstatus) do
+  def signaled? = false
+
+  def termsig = nil
+end
+
+def status_for(exitstatus) = EXIT_STATUS.new(exitstatus)
 
 application = Bustle::Application.new(logs: [LOG], app_id: "org.rubygtkproject.Bustle.Drive")
 
@@ -687,7 +698,7 @@ GtkDriver.drive(application, shots: ENV.fetch("BUSTLE_SHOTS", File.join(Dir.tmpd
   end
 
   d.step("the address came back") do
-    covers(13, 21)
+    covers(13)
     d.check("the typed address was handed over") do
       recorded_address == "unix:abstract=/tmp/dbus-drive,guid=deadbeef"
     end
@@ -703,6 +714,26 @@ GtkDriver.drive(application, shots: ENV.fetch("BUSTLE_SHOTS", File.join(Dir.tmpd
       Bustle::Monitor.describe(Bustle::Monitor::SESSION_BUS) == "session bus" &&
         Bustle::Monitor.describe(Bustle::Monitor::SYSTEM_BUS) == "system bus" &&
         Bustle::Monitor.describe(recorded_address) == recorded_address
+    end
+  end
+
+  d.step("Return in the address entry records too") do
+    covers(13)
+    Bustle::RecordAddressDialog.new(on_record: ->(address) { recorded_address = address }).then do |dialog|
+      dialog.present(app.windows.first.window)
+      d.check("Record is the window's default widget, as upstream's response is") do
+        dialog.window.default_widget == dialog.record_button
+      end
+      dialog.address_row.signal_emit("entry-activated")
+      d.check("Return on an empty address does nothing, as an insensitive default does") do
+        recorded_address == "unix:abstract=/tmp/dbus-drive,guid=deadbeef"
+      end
+      dialog.address_row.text = "unix:path=/tmp/typed-then-entered"
+      dialog.address_row.signal_emit("entry-activated")
+      d.check("Return hands the typed address back") do
+        recorded_address == "unix:path=/tmp/typed-then-entered"
+      end
+      d.check("and closes the dialog") { !dialog.window.visible? }
     end
   end
 
@@ -1125,8 +1156,23 @@ GtkDriver.drive(application, shots: ENV.fetch("BUSTLE_SHOTS", File.join(Dir.tmpd
     covers(1, 19)
     d.check("--count takes exactly one log") { Bustle::Main.new(["--count", LOG]).run.zero? }
     d.check("--count with two logs is a usage error") { Bustle::Main.new(["--count", LOG, LOG]).run == 1 }
-    d.check("--pair needs exactly two logs") { Bustle::Main.new(["--pair", LOG]).run == 1 }
+    d.check("--count with --debug after it is a usage error too, as runOne makes it") do
+      Bustle::Main.new(["--count", "--debug", LOG]).run == 1
+    end
     d.check("--help is not an error") { Bustle::Main.new(["--help"]).run.zero? }
+    d.check("--help only counts as the whole command line") do
+      Bustle::Main.new(["--count", LOG, "--help"]).send(:command) == :batch
+    end
+    d.check("--pair is a pair only with two logs after it") do
+      Bustle::Main.new(["--pair", LOG, LOG]).send(:command) == :pair &&
+        Bustle::Main.new(["--pair", LOG]).send(:command) == :interactive
+    end
+    d.check("only --debug is stripped, so a mistyped flag reaches the loader") do
+      Bustle::Main.new(["--debug", "--nonesuch", LOG]).send(:arguments) == ["--nonesuch", LOG]
+    end
+    d.check("running anything sets GLib's application name, as upstream does first") do
+      GLib.application_name == Bustle._("Bustle")
+    end
   end
 
   # --- 20. the bustle-pcap recorder binary ----------------------------------
@@ -1205,6 +1251,165 @@ GtkDriver.drive(application, shots: ENV.fetch("BUSTLE_SHOTS", File.join(Dir.tmpd
     end
   end
 
+  d.step("bustle-pcap exits as upstream's main does") do
+    covers(20)
+    # Upstream's only exit(1) is a monitor that would not construct; an error
+    # reported through ::stopped while the recording was under way is printed
+    # by stopped_cb and main still returns 0.
+    File.join(SCRATCH, "pcap-cli-runtime.bustle").then do |path|
+      StringIO.new.then do |out|
+        StringIO.new.then do |errors|
+          d.check("a bus that cannot be monitored is an error, not an exit status") do
+            Bustle::PcapCli.run(
+              ["--address=unix:path=/nonexistent/socket", path],
+              output: out,
+              errors: errors,
+            ).zero?
+          end
+          d.check("and the error was printed") { errors.string.start_with?("Error: ") }
+          d.check("under the spawn domain and the child's exit status") do
+            errors.string.include?("#{Bustle::Monitor::SPAWN_EXIT_ERROR_QUARK} 1 ")
+          end
+        end
+      end
+    end
+
+    StringIO.new.then do |out|
+      StringIO.new.then do |errors|
+        d.check("a log that cannot be opened at all exits 1") do
+          Bustle::PcapCli.run(
+            [File.join(SCRATCH, "no-such-directory", "out.bustle")],
+            output: out,
+            errors: errors,
+          ) == 1
+        end
+        d.check("and nothing was announced before it was known to have failed") { out.string.empty? }
+        d.check("the failure itself was printed") { errors.string.include?("Failed to start dbus-monitor") }
+      end
+    end
+  end
+
+  d.step("bustle-pcap warns about an unparseable frame on stderr") do
+    covers(20)
+    Bustle::PcapCli.new(["--verbose", File.join(SCRATCH, "verbose.bustle")]).then do |cli|
+      cli.send(:parse)
+      cli.instance_variable_set(:@output, StringIO.new)
+      StringIO.new.then do |captured|
+        $stderr = captured
+        begin
+          cli.send(:summarise, 0, "not a marshalled message")
+        ensure
+          $stderr = STDERR
+        end
+        d.check("the warning went to stderr") { captured.string.include?(Bustle._("Warning: ")) }
+        d.check("and not into the stream of message summaries") do
+          cli.instance_variable_get(:@output).string.empty?
+        end
+      end
+    end
+  end
+
+  # --- 21. the live bus monitor's stop and error mapping ---------------------
+
+  # The monitor's own recording path needs a session bus of its own and is
+  # driven end to end by test/drive_recording.rb, which is where component 21
+  # is claimed. What is driven here is the part of it a session bus cannot
+  # reach: the exit statuses pkexec hands back from a system-bus recording,
+  # and a Stop whose subprocess refuses to die.
+  d.step("a Stop that the subprocess ignores still reports itself stopped") do
+    status = nil
+    File.join(SCRATCH, "unkillable.bustle").then do |path|
+      Bustle::Monitor.new(target: Bustle::Monitor::SESSION_BUS, filename: path).then do |monitor|
+        # A child that ignores SIGTERM and writes nothing: a privileged
+        # dbus-monitor behind pkexec cannot be signalled by this process
+        # either, which is the case upstream's two-second timeout and closed
+        # pipe exist for.
+        monitor.define_singleton_method(:argv) { ["sh", "-c", "trap '' TERM; while :; do sleep 1; done"] }
+        monitor.signal_connect(Bustle::Monitor::STOPPED) { |domain, code, _message| status = [domain, code] }
+        monitor.start
+        d.check("the recording started") { !monitor.stopped? }
+        monitor.stop
+        d.check("pump stops pumping once Stop has closed the pipe") { monitor.pump == false }
+        d.check("stopped arrived without waiting for the child") { monitor.stopped? }
+        d.check("and arrived as the cancellation the recorder swallows") do
+          status == [Bustle::Monitor::IO_ERROR_QUARK, Bustle::Monitor::IO_ERROR_CANCELLED]
+        end
+      end
+    end
+  end
+
+  d.step("the pkexec exit statuses map onto upstream's three errors") do
+    # report_exit reads a Process::Status; a stand-in with the exit status in
+    # it drives all three branches without a polkit prompt.
+    reported = lambda do |exitstatus|
+      [].tap do |seen|
+        Bustle::Monitor.new(target: Bustle::Monitor::SYSTEM_BUS, filename: File.join(SCRATCH, "exit.bustle"))
+                       .then do |monitor|
+          monitor.signal_connect(Bustle::Monitor::STOPPED) { |*emitted| seen.replace(emitted) }
+          monitor.send(:report_exit, status_for(exitstatus))
+        end
+      end
+    end
+
+    d.check("126, a dismissed authorisation dialog, is a cancellation") do
+      reported.call(126) ==
+        [Bustle::Monitor::IO_ERROR_QUARK, Bustle::Monitor::IO_ERROR_CANCELLED,
+         "User dismissed polkit authorization dialog"
+]
+    end
+    d.check("127, a refused authorisation, is a permission error") do
+      reported.call(127) ==
+        [Bustle::Monitor::IO_ERROR_QUARK, Bustle::Monitor::IO_ERROR_PERMISSION_DENIED,
+         "Not authorized to monitor system bus"
+]
+    end
+    d.check("0, the bus itself going away, is a cancellation") do
+      reported.call(0) ==
+        [Bustle::Monitor::IO_ERROR_QUARK, Bustle::Monitor::IO_ERROR_CANCELLED,
+         "dbus-monitor exited cleanly"
+]
+    end
+    d.check("anything else carries the spawn domain and the child's status") do
+      reported.call(1) ==
+        [Bustle::Monitor::SPAWN_EXIT_ERROR_QUARK, 1,
+         "Failed to start dbus-monitor: Child process exited with code 1"
+]
+    end
+  end
+
+  d.step("closing the authorisation dialog is silent, and a refusal is not") do
+    outcome = lambda do |exitstatus|
+      {errors: [], finished: []}.tap do |seen|
+        Bustle::Recorder.new(
+          target:      Bustle::Monitor::SYSTEM_BUS,
+          on_progress: ->(_count, _result) { nil },
+          on_finished: ->(path, recorded) { seen[:finished] << [path, recorded] },
+          on_error:    ->(message) { seen[:errors] << message },
+        ).then do |recorder|
+          recorder.monitor.signal_connect(Bustle::Monitor::STOPPED) do |domain, code, message|
+            recorder.send(
+              :conclude,
+              domain,
+              code,
+              message,
+            )
+          end
+          recorder.monitor.send(:report_exit, status_for(exitstatus))
+        end
+      end
+    end
+
+    d.check("a dismissed polkit dialog reaches no error bar") { outcome.call(126).fetch(:errors).empty? }
+    d.check("and still finishes the recording") { outcome.call(126).fetch(:finished).length == 1 }
+    d.check("a refused authorisation does reach the error bar") do
+      outcome.call(127).fetch(:errors) == ["Not authorized to monitor system bus"]
+    end
+    d.check("so does a dbus-monitor that would not start") do
+      outcome.call(1).fetch(:errors) ==
+        ["Failed to start dbus-monitor: Child process exited with code 1"]
+    end
+  end
+
   # --- 22. data files and the message catalogue -----------------------------
 
   d.step("the data files and the catalogue are where the app looks for them") do
@@ -1272,13 +1477,15 @@ GtkDriver.drive(application, shots: ENV.fetch("BUSTLE_SHOTS", File.join(Dir.tmpd
 
   # --- what the run covered -------------------------------------------------
 
-  d.step("the drive covered every component in the inventory") do
-    # Component 21, the live bus monitor, is the one that needs a session bus;
-    # test/drive_recording.rb drives it end to end and this run only covers
-    # its target/describe surface, so it is counted here as covered by the
-    # pair of drive scripts together.
+  d.step("this script covered 21 of the 22 components in the inventory") do
+    # Component 21, the live bus monitor, is driven by test/drive_recording.rb
+    # and claimed there. This script cannot know whether that one ran, so it
+    # does not claim it: test/drive_all.rb runs both and sums what they
+    # covered.
     puts "    components covered: #{COVERED.sort.join(", ")}"
-    puts "    components covered: #{COVERED.length} of 22"
-    d.check("all 22 inventory components were exercised") { COVERED.length == 22 }
+    puts "DRIVE COVERED #{COVERED.sort.join(",")}"
+    d.check("every component but the live bus monitor was exercised") do
+      COVERED.sort == ((1..22).to_a - [21])
+    end
   end
 end

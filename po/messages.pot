@@ -9,7 +9,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 
-#: lib/bustle/statistics_pane.rb:157 lib/bustle/statistics_pane.rb:167
+#: lib/bustle/statistics_pane.rb:176 lib/bustle/statistics_pane.rb:186
 msgid "%.1f ms"
 msgstr ""
 
@@ -17,7 +17,7 @@ msgstr ""
 msgid "(no interface)"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:182
+#: lib/bustle/open_two_dialog.rb:202
 msgid "(none chosen)"
 msgstr ""
 
@@ -25,7 +25,7 @@ msgstr ""
 msgid "<big><b>Waiting for D-Bus traffic; please hold…</b></big>"
 msgstr ""
 
-#: lib/bustle/record_address_dialog.rb:109
+#: lib/bustle/record_address_dialog.rb:119
 msgid "Address:"
 msgstr ""
 
@@ -33,11 +33,11 @@ msgstr ""
 msgid "All files"
 msgstr ""
 
-#: lib/bustle/details_view.rb:80
+#: lib/bustle/details_view.rb:83
 msgid "Arguments"
 msgstr ""
 
-#: data/org.rubygtkproject.Bustle.desktop.in:2 lib/bustle/about_dialog.rb:49 lib/bustle/window.rb:207
+#: data/org.rubygtkproject.Bustle.desktop.in:2 lib/bustle/about_dialog.rb:49 lib/bustle/main.rb:66 lib/bustle/window.rb:211
 msgid "Bustle"
 msgstr ""
 
@@ -57,19 +57,19 @@ msgstr ""
 msgid "Bytestrings with embedded NULs which are otherwise ASCII are now shown as ASCII strings."
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:162
+#: lib/bustle/statistics_pane.rb:181
 msgid "Calls"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:187
+#: lib/bustle/open_two_dialog.rb:207
 msgid "Choose…"
 msgstr ""
 
-#: lib/bustle/window.rb:416
+#: lib/bustle/window.rb:419
 msgid "Close _Without Saving"
 msgstr ""
 
-#: lib/bustle/window.rb:175
+#: lib/bustle/window.rb:179
 msgid "Could not read '%s'"
 msgstr ""
 
@@ -81,7 +81,7 @@ msgstr ""
 msgid "Couldn't parse '%s': %s"
 msgstr ""
 
-#: lib/bustle/window.rb:386
+#: lib/bustle/window.rb:389
 msgid "Couldn't save log: "
 msgstr ""
 
@@ -93,11 +93,11 @@ msgstr ""
 msgid "Destination"
 msgstr ""
 
-#: lib/bustle/details_view.rb:139
+#: lib/bustle/details_view.rb:149
 msgid "Directed signal"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:99
+#: lib/bustle/open_two_dialog.rb:112
 msgid "Display two logs—one for the session bus, one for the system bus—side by side."
 msgstr ""
 
@@ -105,7 +105,7 @@ msgstr ""
 msgid "Draw sequence diagrams of D-Bus activity"
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:71
+#: lib/bustle/statistics_pane.rb:87
 msgid "Durations"
 msgstr ""
 
@@ -113,7 +113,7 @@ msgstr ""
 msgid "Empty or truncated file"
 msgstr ""
 
-#: lib/bustle/details_view.rb:126 lib/bustle/statistics_pane.rb:299
+#: lib/bustle/details_view.rb:136 lib/bustle/statistics_pane.rb:324
 msgid "Error"
 msgstr ""
 
@@ -125,7 +125,7 @@ msgstr ""
 msgid "Export as PDF"
 msgstr ""
 
-#: lib/bustle/filter_dialog.rb:67
+#: lib/bustle/filter_dialog.rb:91
 msgid "Filter Visible Services"
 msgstr ""
 
@@ -133,15 +133,15 @@ msgstr ""
 msgid "First release of the Ruby port: record the session bus, the system bus or an arbitrary bus by address, open pcap logs of D-Bus traffic, explore them as sequence diagrams with a details pane and statistics, filter services, and export the diagram as a PDF."
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:70
+#: lib/bustle/statistics_pane.rb:86
 msgid "Frequencies"
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:144
+#: lib/bustle/statistics_pane.rb:165
 msgid "Frequency"
 msgstr ""
 
-#: lib/bustle/window.rb:414
+#: lib/bustle/window.rb:417
 msgid "If you don't save, this log will be lost forever."
 msgstr ""
 
@@ -149,7 +149,7 @@ msgstr ""
 msgid "It's now possible to monitor the system bus (from the user interface and with the bustle-pcap command-line tool), with no need to reconfigure the system bus. It's also possible to monitor an arbitrary bus by address."
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:186
+#: lib/bustle/statistics_pane.rb:205
 msgid "Largest"
 msgstr ""
 
@@ -161,23 +161,23 @@ msgstr ""
 msgid "Main Menu"
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:166 lib/bustle/statistics_pane.rb:182
+#: lib/bustle/statistics_pane.rb:185 lib/bustle/statistics_pane.rb:201
 msgid "Mean"
 msgstr ""
 
-#: lib/bustle/details_view.rb:77 lib/bustle/statistics_pane.rb:138 lib/bustle/statistics_pane.rb:172
+#: lib/bustle/details_view.rb:77 lib/bustle/statistics_pane.rb:154 lib/bustle/statistics_pane.rb:191
 msgid "Member"
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:150 lib/bustle/statistics_pane.rb:290
+#: lib/bustle/statistics_pane.rb:169 lib/bustle/statistics_pane.rb:315
 msgid "Method"
 msgstr ""
 
-#: lib/bustle/details_view.rb:124 lib/bustle/statistics_pane.rb:297
+#: lib/bustle/details_view.rb:134 lib/bustle/statistics_pane.rb:322
 msgid "Method call"
 msgstr ""
 
-#: lib/bustle/details_view.rb:125 lib/bustle/statistics_pane.rb:298
+#: lib/bustle/details_view.rb:135 lib/bustle/statistics_pane.rb:323
 msgid "Method return"
 msgstr ""
 
@@ -189,7 +189,7 @@ msgstr ""
 msgid "Open a Log"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:64
+#: lib/bustle/open_two_dialog.rb:77
 msgid "Open a Pair of Logs"
 msgstr ""
 
@@ -201,7 +201,7 @@ msgstr ""
 msgid "Path"
 msgstr ""
 
-#: lib/bustle/record_address_dialog.rb:63
+#: lib/bustle/record_address_dialog.rb:73
 msgid "Record Address"
 msgstr ""
 
@@ -229,11 +229,11 @@ msgstr ""
 msgid "Relax with this soothing greyscale welcome page"
 msgstr ""
 
-#: lib/bustle/header_bar.rb:179 lib/bustle/window.rb:418
+#: lib/bustle/header_bar.rb:179 lib/bustle/window.rb:421
 msgid "Save"
 msgstr ""
 
-#: lib/bustle/window.rb:408
+#: lib/bustle/window.rb:411
 msgid "Save log '%s' before closing?"
 msgstr ""
 
@@ -241,11 +241,11 @@ msgstr ""
 msgid "See statistics summarizing the log"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:165
+#: lib/bustle/open_two_dialog.rb:185
 msgid "Select session bus log"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:166
+#: lib/bustle/open_two_dialog.rb:186
 msgid "Select system bus log"
 msgstr ""
 
@@ -253,19 +253,19 @@ msgstr ""
 msgid "Sender"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:105
+#: lib/bustle/open_two_dialog.rb:118
 msgid "Session bus log:"
 msgstr ""
 
-#: lib/bustle/details_view.rb:141 lib/bustle/statistics_pane.rb:291 lib/bustle/statistics_pane.rb:300
+#: lib/bustle/details_view.rb:151 lib/bustle/statistics_pane.rb:316 lib/bustle/statistics_pane.rb:325
 msgid "Signal"
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:72
+#: lib/bustle/statistics_pane.rb:88
 msgid "Sizes"
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:178
+#: lib/bustle/statistics_pane.rb:197
 msgid "Smallest"
 msgstr ""
 
@@ -273,13 +273,13 @@ msgstr ""
 msgid "Someone's favourite D-Bus profiler"
 msgstr ""
 
-#: lib/bustle/welcome_page.rb:44
+#: lib/bustle/welcome_page.rb:91
 msgid ""
 "Start recording D-Bus activity with the <b>Record</b> button above\n"
 " You can also run <i>dbus-monitor --pcap</i> from the command line"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:107
+#: lib/bustle/open_two_dialog.rb:120
 msgid "System bus log:"
 msgstr ""
 
@@ -291,7 +291,7 @@ msgstr ""
 msgid "This is the Ruby GTK4 and Libadwaita port of Bustle."
 msgstr ""
 
-#: lib/bustle/statistics_pane.rb:156
+#: lib/bustle/statistics_pane.rb:175
 msgid "Total"
 msgstr ""
 
@@ -299,7 +299,7 @@ msgstr ""
 msgid "Type"
 msgstr ""
 
-#: lib/bustle/filter_dialog.rb:181
+#: lib/bustle/filter_dialog.rb:225
 msgid "Unticking a service hides its column in the diagram, and all messages it is involved in. That is, all methods it calls or are called on it, the corresponding returns, and all signals it emits will be hidden."
 msgstr ""
 
@@ -307,7 +307,7 @@ msgstr ""
 msgid "Warning: "
 msgstr ""
 
-#: lib/bustle/welcome_page.rb:24
+#: lib/bustle/welcome_page.rb:70
 msgid "Welcome to Bustle"
 msgstr ""
 
@@ -315,7 +315,7 @@ msgstr ""
 msgid "You can now explore messages while they're being recorded. (Filtering, statistics and exporting are still only available once you stop recording.)"
 msgstr ""
 
-#: lib/bustle/window.rb:391
+#: lib/bustle/window.rb:394
 msgid "You might want to manually recover the log from the temporary file at \"%s\"."
 msgstr ""
 
@@ -323,11 +323,11 @@ msgstr ""
 msgid "_About Bustle"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:79 lib/bustle/record_address_dialog.rb:81 lib/bustle/window.rb:417
+#: lib/bustle/open_two_dialog.rb:92 lib/bustle/record_address_dialog.rb:91 lib/bustle/window.rb:420
 msgid "_Cancel"
 msgstr ""
 
-#: lib/bustle/error_bar.rb:51 lib/bustle/filter_dialog.rb:81
+#: lib/bustle/filter_dialog.rb:105
 msgid "_Close"
 msgstr ""
 
@@ -335,7 +335,7 @@ msgstr ""
 msgid "_Filter Visible Services…"
 msgstr ""
 
-#: lib/bustle/open_two_dialog.rb:82
+#: lib/bustle/open_two_dialog.rb:95
 msgid "_Open"
 msgstr ""
 
@@ -343,7 +343,7 @@ msgstr ""
 msgid "_Open…"
 msgstr ""
 
-#: lib/bustle/header_bar.rb:154 lib/bustle/record_address_dialog.rb:88
+#: lib/bustle/header_bar.rb:154 lib/bustle/record_address_dialog.rb:98
 msgid "_Record"
 msgstr ""
 
@@ -359,6 +359,10 @@ msgstr ""
 msgid "debug;profile;d-bus;dbus;sequence;monitor;"
 msgstr ""
 
-#: lib/bustle/record_address_dialog.rb:97
+#: lib/bustle/record_address_dialog.rb:107
 msgid "e.g. unix:abstract=/tmp/dbus-E5RlEB5Tzu,guid= b1c1921b62283b7b612b57305b20cc28"
+msgstr ""
+
+#: data/org.rubygtkproject.Bustle.desktop.in:5
+msgid "org.rubygtkproject.Bustle"
 msgstr ""

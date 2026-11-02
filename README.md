@@ -21,6 +21,72 @@ I've summarized my thoughts in [this blog post](https://dev.to/galtzo/hostile-ta
 
 ## 🌻 Synopsis
 
+Bustle draws sequence diagrams of D-Bus activity. It records the session bus,
+the system bus or any bus address you can name, and shows every signal
+emission, method call and reply with a timestamp of its own and the duration
+of each call — so you can see unwanted traffic, and find out why something
+that talks to D-Bus is slower than it ought to be. Beside the diagram it
+keeps statistics: the most frequent signals, the slowest methods, the largest
+messages.
+
+This is a Ruby GTK4 / Libadwaita port of
+[Bustle](https://gitlab.freedesktop.org/bustle/bustle), which is written in
+Haskell against GTK 3. Upstream's behaviour is the specification; the
+`origin/master` ref of this repository is upstream's source.
+
+### Recording a log
+
+Start the app and press **Record** to record the session bus; the Record menu
+also offers the system bus (which asks for authorisation through polkit) and
+an arbitrary bus address. Press **Stop** when you have enough, then **Save**
+to keep the log.
+
+To record without a display — on a machine with no GTK, or over ssh — use the
+stand-alone logger:
+
+    bustle-pcap logfile.bustle
+
+It takes `--session` (the default), `--system` or `--address ADDRESS`, prints
+a summary of each message with `--verbose`, and stops on Control-C. The log it
+writes is an ordinary pcap file, which is also what `dbus-monitor --pcap`
+writes.
+
+### Opening a log
+
+    bustle logfile.bustle
+
+Or press **Open** in the app. A session bus log and a system bus log can be
+drawn side by side in one diagram:
+
+    bustle --pair session.bustle system.bustle
+
+Clicking a message fills the details pane; **F9** opens the statistics
+sidebar; the Filter dialog hides services you do not care about; and the log
+can be exported as a single tall PDF page.
+
+The statistics are also available without the UI:
+
+    bustle --count logfile.bustle
+    bustle --time logfile.bustle
+    bustle --dot logfile.bustle
+
+### Installing and contributing
+
+This port is developed inside a Nix dev shell that carries Ruby, GTK4,
+Libadwaita and the introspection typelibs:
+
+    nix develop        # or `direnv allow`
+    bundle install
+    ruby exe/bustle    # the shell's banner prints this and the drive commands
+
+`rake spec` runs the specs and `ruby test/drive_all.rb` drives the whole app
+headlessly. Upstream's own build and contribution instructions, which are
+about the Haskell toolchain rather than this one, are in `INSTALL.md` and
+`CONTRIBUTING.md` on the `origin/master` ref; upstream bugs belong at
+<https://gitlab.freedesktop.org/bustle/bustle>.
+
+More about upstream Bustle: <https://www.freedesktop.org/wiki/Software/Bustle/>.
+
 ## 💡 Info you can shake a stick at
 
 | Tokens to Remember | [![Gem name][⛳️name-img]][⛳️gem-name] [![Gem namespace][⛳️namespace-img]][⛳️gem-namespace] |

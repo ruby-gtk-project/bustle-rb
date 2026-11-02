@@ -76,10 +76,13 @@ module Bustle
 
     def member_row = @member_row ||= detail_row(Bustle._("Member"))
 
+    # Upstream dims this caption exactly as it dims the five above it — the
+    # grid's captions are all dim-label in data/bustle.ui — so it is a quiet
+    # label and not a heading.
     def arguments_caption
       @arguments_caption ||= Gtk::Label.new(Bustle._("Arguments")).tap do |label|
         label.xalign = 0
-        label.add_css_class("heading")
+        label.add_css_class("dim-label")
       end
     end
 

@@ -7,8 +7,9 @@ repository; the port is the `ruby` branch. Read upstream with
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `d7a5a16` (this file is the commit after it) |
-| Last audit | `.reports/*` @ port `16f6787` — 14 gaps, `clean=false` |
+| Port | `ruby` @ `71d3f60` (this file is updated by the commit after it) |
+| Last audit | `.reports/*` @ port `71d3f60` — 19 gaps, `clean=false` |
+| Verified by | `ruby test/drive_all.rb` — 22 of 22 components, both drive scripts |
 
 ## Upstream
 
@@ -26,9 +27,13 @@ properties plus HUnit cases). One `po/en.po` and a committed
 
 ## Done
 
-Components implemented and believed complete. "Believed complete" means the
-four parity axes agree when both sources are read — not that the behaviour was
-observed. Nothing with a widget in it has ever been run; see **Open gaps**.
+Components implemented and believed complete. Every one of them has been run:
+`test/drive_all.rb` runs `test/drive_bustle.rb` (21 components, 290 checks,
+21 screenshots) and `test/drive_recording.rb` (component 21 — a real session
+bus recorded through the GUI) and sums what the two covered, 22 of 22. So
+"believed complete" here means the four parity axes agree when both sources
+are read **and** the component was seen working headlessly; what it does not
+mean is that every divergence has been found. See **Open gaps**.
 
 | Port | Upstream |
 |---|---|
@@ -70,11 +75,12 @@ observed. Nothing with a widget in it has ever been run; see **Open gaps**.
 | `spec/pcap_loader_spec.rb` | `Test/PcapCrash.hs` (1 case) |
 | `po/`, `data/*.in`, `rakelib/translation.rake` | `po/`, `data/*.in`, `Makefile` gettext rules |
 
-Live recording was exercised end to end on this machine's session bus:
-`bustle-pcap -v /tmp/rec.bustle` logged two messages, stopped cleanly on
-`SIGINT`, and the port's own `PcapLoader` read the file back. All 23 ported
-specs pass against the real `lib/`, executed with a throwaway RSpec stand-in
-because `rspec` is not installed in this checkout.
+Live recording was exercised end to end on this machine's session bus, both
+from the command line (`bustle-pcap -v`) and through the GUI
+(`test/drive_recording.rb`: record, make traffic, stop, read the log back and
+find the monitor's own claimed name in it). The specs run with `rake spec`,
+which `rakelib/spec.rake` defines because kettle-dev is absent in this dev
+shell: 24 examples, 0 failures.
 
 ## Not started
 
@@ -84,103 +90,78 @@ nothing, and its printing loop is commented out upstream.
 
 Non-component work not started:
 
-- `README.md` is still the unedited gem template. It does not mention D-Bus,
-  Bustle, or what the application does.
-- No screenshot or run-time verification exists for any widget file. `ruby -c`
-  is all that has been applied to `window.rb`, `header_bar.rb`, `canvas.rb`,
-  `statistics_pane.rb`, `details_view.rb`, `filter_dialog.rb`,
-  `record_address_dialog.rb` and `recorder.rb`.
+- The port has no gettext domain. `lib/bustle/translation.rb` reads `po/*.po`
+  at run time and `Bustle._` looks the msgid up in that hash. It works — it
+  was driven under `en_GB` and `de_DE` — and `rake po:check` now runs
+  `msgfmt -c` over every catalogue, but there is no `.mo` install rule, no
+  plural-forms engine and no `msgctxt` support. Upstream's catalogue has
+  neither plurals nor contexts, so nothing is untranslatable today; the first
+  upstream plural would be.
+- `.reports/component-parity.md` and `.reports/translation-parity.md` still
+  describe gaps this round closed as open. The ledgers are the audit's to
+  rewrite, not the port's, but a reader of those files alone will overstate
+  the debt.
 
 ## Open gaps
 
-14 gaps, `clean=false`, from the audit at port `16f6787`: 12 in
-`.reports/component-parity.md`, 1 in `.reports/translation-parity.md`, and 1
-load-bearing excuse in `.reports/accountability-ensurance.md`.
-`.reports/test-parity.md` reports 0 gaps.
+The audit at port `71d3f60` reported 19 gaps, `clean=false`: 12 in
+`.reports/component-parity.md`, 4 in `.reports/translation-parity.md`, 1 in
+`.reports/test-parity.md` and 7 in `.reports/accountability-ensurance.md`
+(two rows appear in two ledgers by design). The commit after this file closed
+all but the three below. Each of those three is open because closing it costs
+more than it is worth, and each is named in the code that owns it, in the
+first person, as missing work rather than as a decision.
 
-Component gaps, as that report ranks them by cost to close:
+1. **A browsed folder does not travel between Open-a-Pair's two choosers.**
+   Upstream connects `current-folder-changed` on both
+   (`Bustle/UI/OpenTwoDialog.hs:36-44`), so merely navigating moves the other
+   chooser while it is still empty. GTK4's `Gtk::FileDialog` is a one-shot
+   modal with no signals at all — verified, `FINDINGS.md` — so the port can
+   only observe the folder a file was *chosen* from, which it now remembers
+   for both choosers. Browse-then-dismiss is not recovered.
+2. **The monitor does not prefer the libpcap error over the subprocess one.**
+   Upstream's `await_both_errors`/`handle_error` waits for both and then
+   reports libpcap's, "including the wonderful snaplen bug"
+   (`c-sources/pcap-monitor.c:393-412`, `:359-368`). The port reports
+   whichever arrives first, which in practice is the pcap-side error because
+   it is raised while reading, so the two agree in every case tried; the
+   explicit precedence rule is still not implemented.
+3. **No gettext domain.** As under **Not started** above: a run-time PO
+   reader instead of a bound domain, so no plural forms, no `msgctxt` and no
+   `.mo` install rule.
 
-1. Live recording never seeds well-known-name ownership. Upstream's
-   `pcap-monitor.c:415-456` runs `ListNames` and one `GetNameOwner` per
-   well-known name on a second connection; `monitor.rb` opens no D-Bus
-   connection at all. `pcap_loader.rb:433-440` already turns a `GetNameOwner`
-   reply into a name-ownership event, so the machinery exists and is never
-   fed. Consequence: every service already on the bus when recording starts is
-   drawn as a bare unique name (`:1.42`) where upstream draws
-   `org.gnome.Shell`, and the filter dialog lists unique names. Logs recorded
-   by upstream's `bustle-pcap` display correctly; logs recorded by this port
-   do not.
-2. `pkexec` exit 126 (dialog dismissed), exit 127 (not authorized) and exit 0
-   (bus shut down) are not mapped to upstream's `G_IO_ERROR_CANCELLED` /
-   `G_IO_ERROR_PERMISSION_DENIED` / silent-cancellation outcomes.
-   `monitor.rb:271-278` never reads the exit status and reports raw stderr. A
-   dismissed polkit prompt therefore shows an error upstream swallows. Also
-   in this row: libpcap errors have no precedence over subprocess errors.
-3. The monitor owns no `org.freedesktop.Bustle.Monitor.<unique>` name, so the
-   viewer cannot hide the monitor's own traffic (`pcap-monitor.c:31`, `:530`).
-4. `bustle-pcap` rejects `--address=X`, bundled short options (`-vq`) and
-   abbreviated long options (`--sess`), all of which GOption accepts
-   upstream. `pcap_cli.rb:105-123` matches exact tokens only. A script running
-   `bustle-pcap --address=unix:path out.pcap` works against upstream and exits
-   2 here.
-5. `bustle-pcap` rejects a repeated bus flag (`-e -e` is one bus upstream),
-   and `--help` outranks a parse error, so `--help --bogus` exits 0 instead of
-   2. `pcap_cli.rb:127-139`. The `--help` text is also a hand-written heredoc
-   approximating GLib's output, not byte-compared.
-6. The error bar is not error-coloured. `Adwaita::Banner` carries no `error`
-   class against upstream's `message_type=error` (`bustle.ui:369`).
-7. The error bar's title and details are not selectable. Both labels are
-   `selectable` upstream on purpose (`bustle.ui:411`, `:427`) — the thing a
-   user does with "Could not read '/path': …" is paste it into a bug report.
-   `error_bar.rb:50,57`.
-8. The canvas scroll step is not one event row. `Canvas.hs:102-103` sets
-   `step_increment` on both adjustments to `eventHeight` (30.0);
-   `canvas.rb:131` reads the getter and nothing sets it, so Left/Right and the
-   scrollbar arrows move by GTK's default.
-9. The filter list has no row banding (`treeViewSetRulesHint True`,
-   `FilterDialog.hs:72`) and neither size request (600×371 on the view,
-   600×−1 on the instructions). `filter_dialog.rb:96,114`.
-10. Open-a-pair does not propagate a browsed folder between the two choosers;
-    upstream wires `current-folder-changed` on both. `open_two_dialog.rb:133-139`.
-11. The statistics Frequency column is `fixed_width = 120`, a ceiling, where
-    upstream sets `setMinWidth 120`, a floor, so the progress bar cannot grow
-    when the sidebar is widened. `statistics_pane.rb:145`.
-12. Details values go unescaped into markup-interpreting `AdwActionRow`
-    subtitles. Upstream uses `labelSetText` for sender/destination/path and
-    `labelSetMarkup` only for member (`DetailsView.hs:104-114`);
-    `details_view.rb:108-118` assigns raw strings to all of them.
+What the round before this one left behind, and this round closed, so that it
+is not looked for again: `Monitor#stop` now closes the read end of
+dbus-monitor's stdout and arms upstream's two-second timeout, so Stop always
+reaches `stopped` (driven against a child that traps `SIGTERM`); `stopped`
+carries `g-spawn-exit-error` and the child's exit status for a child that
+exited; the pkexec 126/127/0 mappings are driven against a fabricated exit
+status, including the behaviour owed — a dismissed authorisation dialog is
+silent; `bustle-pcap` exits 0 for a runtime error and 1 only for a monitor
+that would not start, announces nothing until the subprocess has spawned, and
+warns about an unparseable frame on stderr; Return in the Record Address
+entry records; the welcome page is greyscale at upstream's 256 pixels and the
+Arguments caption is dimmed rather than emphasised; `bustle`'s argument
+handling matches `["--help"]` as a whole, strips only `--debug` and passes
+every other token to the loader; `GLib.application_name` is set from the
+`Bustle` msgid; `rake po:pot` extracts the port's own `Icon=` value and
+`rake po:check` fails on a stale `po/` or a catalogue `msgfmt -c` rejects;
+`rake spec` exists; and `test/drive_all.rb` is the coverage gate, because
+`drive_bustle.rb` alone could not honestly claim component 21.
 
-Translation gap:
+Two caveats the reports carry about themselves, which are not counted as gaps
+but limit what every verdict above is worth:
 
-13. `org.freedesktop.Bustle` — upstream marks the `Icon=` value of its desktop
-    entry translatable (`data/org.freedesktop.Bustle.desktop.in:6`,
-    `po/messages.pot:248`). The port's `data/org.rubygtkproject.Bustle.desktop.in`
-    does not mark its `Icon=` line, so no counterpart key is produced.
-    Copying upstream's bytes would be wrong — it names an icon this port does
-    not ship. Closing it means marking the port's own icon name the way
-    upstream marks its own, or getting upstream's row deleted as the
-    extraction bug it probably is.
-
-Accountability gap:
-
-14. `PORTING.md` at `16f6787` (lines 35-40) and `monitor.rb:16-19` presented
-    gap 3 as a reasoned decision — a new `ruby-dbus` dependency "for a hint
-    the viewer does not currently act on" — rather than as missing work. The
-    audit flagged it as the one load-bearing excuse in the repository, and
-    flagged that eleven of the twelve component gaps were named in no document
-    at all. This file names all twelve; the sentence in `monitor.rb:16-19` has
-    not been rewritten.
-
-Two further caveats the reports carry about themselves, which are not counted
-as gaps but limit what every verdict above is worth:
-
-- `component-parity.md` step 5 was not run. No unit was screenshotted and
-  `rspec` is not installed here, so "parity" in that ledger means the sources
-  agree, not that the behaviour was observed firing.
-- `translation-parity.md` records two defects in its own scanner (the port's
-  `Bustle._("…")` marker and Haskell's `__ "…"` marker are both invisible to
-  it) and `test-parity.md` one (no QuickCheck or HUnit patterns). All three
-  censuses were taken by hand as a result.
+- `.reports/component-parity.md` step 5 (screenshot the unit) was run for the
+  widget components through `test/drive_bustle.rb`, but the ledger text
+  predates that run and still says it was not.
+- `.claude/skills/translation-parity/scripts/msgid-census.sh` saw neither
+  side's marker until this round — it now allows a qualified receiver
+  (`Bustle._("…")`) and reads Haskell's `__ "…"`, and
+  `catalogue.rb --compare` over both trees reports 63 ported, 4 gaps (all
+  four markup-escaping artefacts of comparing `.ui` XML text with Ruby
+  literals), 21 port-only. The earlier censuses in the ledgers were taken by
+  hand.
 
 ## Blockers
 
@@ -195,7 +176,11 @@ each decision is recorded so the next run does not reopen it.
   `dbus-monitor --pcap` as a subprocess — behind `pkexec` for the system bus,
   behind `flatpak-spawn --host` inside a sandbox — and writes the pcap half in
   Ruby, emitting upstream's `message-logged` and `stopped` signals. The cost
-  of that choice is gaps 1-3: a subprocess has no bus connection of its own.
+  of that choice is open gap 2 and the shape of the stop path: the port has to
+  read an exit status where upstream reads a `GError`, and it has to make a
+  child it may not be able to signal go away — which is why `Monitor#stop`
+  closes the pipe and arms a timeout, and why `report_exit` maps pkexec's
+  statuses by hand.
 - **pcap parsing needs a D-Bus unmarshaller.** `Bustle/Loader/Pcap.hs` leans
   on Haskell's `dbus` package to unmarshal wire messages. **Resolved by:**
   `lib/bustle/pcap_loader.rb` carries its own marshaller; `ruby-dbus` is not a

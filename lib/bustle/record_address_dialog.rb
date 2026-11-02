@@ -14,6 +14,12 @@ module Bustle
   # address with g_dbus_is_supported_address(), and settles for a non-empty
   # string; so does this.
   #
+  # Upstream's Record button is the dialog's default response widget and its
+  # entry sets activates-default, so Return in the entry starts the
+  # recording; here the entry row's `entry-activated` does the same thing the
+  # button's `clicked` does, and the window's default widget is the button,
+  # so Return works whether the focus is in the entry or not.
+  #
   # Two details differ because GTK4 does. There is no GtkDialog any more, so
   # this is an Adwaita::Window whose header bar carries the two buttons in
   # place of an action area. And Adwaita::EntryRow has no placeholder of its
@@ -38,6 +44,7 @@ module Bustle
     def build
       window.tap do |win|
         win.content = toolbar_view
+        win.default_widget = record_button
 
         toolbar_view.tap do |view|
           view.add_top_bar(header_bar)
@@ -53,7 +60,10 @@ module Bustle
 
           group.add(address_row)
 
-          address_row.signal_connect("changed") { refresh_sensitivity }
+          address_row.tap do |row|
+            row.signal_connect("changed") { refresh_sensitivity }
+            row.signal_connect("entry-activated") { activate_default }
+          end
         end
       end
     end
@@ -116,6 +126,14 @@ module Bustle
 
       def refresh_sensitivity
         record_button.sensitive = !address.empty?
+      end
+
+      # What GTK does for a default response: nothing at all while the
+      # default widget is insensitive, which here means an empty address.
+      def activate_default
+        if record_button.sensitive?
+          record
+        end
       end
 
       def record

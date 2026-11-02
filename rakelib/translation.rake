@@ -11,14 +11,19 @@
 # without the templated Rakefile itself having to change.
 
 POT_PATH = "po/messages.pot"
+LINGUAS_PATH = "po/LINGUAS"
 DESKTOP_TEMPLATE = "data/org.rubygtkproject.Bustle.desktop.in"
 DESKTOP_OUTPUT = "data/org.rubygtkproject.Bustle.desktop"
 APPDATA_TEMPLATE = "data/org.rubygtkproject.Bustle.appdata.xml.in"
 APPDATA_OUTPUT = "data/org.rubygtkproject.Bustle.appdata.xml"
 
-# Which keys in the .desktop file are translatable, as upstream's intltool
-# rules mark them.
-DESKTOP_KEYS = %w[Name Comment Keywords].freeze
+# Which keys in the .desktop file gettext extracts. Name, Comment and
+# Keywords are the translatable ones; Icon is in the list because
+# `xgettext --language=Desktop` extracts it too — an icon name is a key a
+# translator may have to change when an icon is localised — and upstream's
+# committed po/messages.pot therefore has an entry for its own icon name.
+# Leaving it out was the one difference between the two key sets.
+DESKTOP_KEYS = %w[Name Comment Icon Keywords].freeze
 
 # The elements of the appdata file that hold translatable text.
 APPDATA_ELEMENTS = %w[summary caption p].freeze
@@ -185,15 +190,51 @@ module PotWriter
   end
 end
 
+# Everything the template is extracted from, in one place, so `po:pot` and
+# `po:check` cannot disagree about what the catalogue should contain.
+# The languages po/LINGUAS lists, which is the set `data:merge` merges and
+# `po:check` compiles.
+def languages = File.readlines(LINGUAS_PATH).flat_map(&:split)
+
+module Extraction
+  class << self
+    def pairs
+      MsgidExtractor.from_ruby(sources) +
+        DataExtractor.from_desktop(DESKTOP_TEMPLATE) +
+        DataExtractor.from_appdata(APPDATA_TEMPLATE)
+    end
+
+    def sources = (Dir["lib/**/*.rb"] + Dir["exe/*"]).sort
+  end
+end
+
 namespace :po do
   desc "Extract translatable strings into #{POT_PATH}"
   task :pot do
-    sources = Dir["lib/**/*.rb"] + Dir["exe/*"]
-    pairs = MsgidExtractor.from_ruby(sources.sort) +
-      DataExtractor.from_desktop(DESKTOP_TEMPLATE) +
-      DataExtractor.from_appdata(APPDATA_TEMPLATE)
-    PotWriter.write(POT_PATH, pairs).then do |count|
+    PotWriter.write(POT_PATH, Extraction.pairs).then do |count|
       puts "#{POT_PATH}: #{count} messages"
+    end
+  end
+
+
+  desc "Check that #{POT_PATH} is up to date and every catalogue compiles"
+  task :check do
+    require "tmpdir"
+    Dir.mktmpdir do |dir|
+      File.join(dir, "messages.pot").then do |regenerated|
+        PotWriter.write(regenerated, Extraction.pairs)
+        unless File.read(regenerated) == File.read(POT_PATH)
+          raise "#{POT_PATH} is out of date: run `rake po:pot` and commit the result"
+        end
+      end
+    end
+    languages.each do |language|
+      sh(
+        "msgfmt",
+        "--check",
+        "--output-file=#{File::NULL}",
+        File.join("po", "#{language}.po"),
+      )
     end
   end
 end
@@ -221,3 +262,7 @@ namespace :data do
     )
   end
 end
+
+# The declared target runs the checks: a pot that no longer matches the tree
+# is a translator's map gone stale, and nothing was catching it.
+task default: "po:check"

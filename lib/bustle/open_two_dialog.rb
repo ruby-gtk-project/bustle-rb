@@ -10,19 +10,25 @@ module Bustle
   # by side in one diagram.
   #
   # Ported from upstream's Bustle/UI/OpenTwoDialog.hs and data/OpenTwoDialog.ui.
-  # GTK4 removed GtkFileChooserButton, so each row here opens a GtkFileDialog
-  # of its own; what survives is the behaviour around them. Open stays
-  # insensitive until both logs have been chosen, and choosing a session log
-  # moves the system log chooser to the same folder — but only while that
-  # chooser is still empty, so picking the second file from elsewhere cannot
-  # unpick the first, which is the condition upstream's
-  # propagateCurrentFolder tests.
+  # GTK4 removed GtkFileChooserButton, so each row here opens a
+  # Gtk::FileDialog of its own in place of upstream's embedded chooser.
   #
-  # Upstream propagates on `current-folder-changed`, so merely browsing in one
-  # chooser moves the other even before a file is picked. GtkFileDialog is a
-  # one-shot dialog with no signals at all — GTK4 dropped every signal from
-  # GtkFileChooser — so browsing cannot be observed, and the folder can only
-  # travel when a file is actually chosen.
+  # I have not reproduced one behaviour of upstream's. Its
+  # propagateCurrentFolder (OpenTwoDialog.hs:36-44) connects
+  # `current-folder-changed` on each chooser, so browsing to a folder in one
+  # of them — before any file is picked, just by navigating — moves the other
+  # chooser to that folder as long as it is still empty. Here the folder
+  # travels only when a file has actually been chosen, so a user who browses
+  # to ~/logs in the session chooser and then dismisses it still finds the
+  # system chooser where it started. The folder a chosen file came from is
+  # remembered for both choosers, which recovers the common case; it is not
+  # the same thing, and FINDINGS.md says why the rest is expensive.
+  #
+  # What is reproduced is the guard upstream's comment is about: the folder
+  # moves only while the other chooser is still empty, so picking the second
+  # log from somewhere else cannot unpick the first. Open stays insensitive
+  # until both logs have been chosen, as upstream's updateOpenSensitivity
+  # makes it.
   class OpenTwoDialog
     def initialize(on_open:)
       @on_open = on_open
@@ -131,16 +137,23 @@ module Bustle
       def chosen(which, path)
         @chosen[which] = path
         row_for(which).subtitle = path
-        propagate_folder(which, path)
+        remember_folder(which, File.dirname(path))
         update_sensitivity
       end
 
-      # The other chooser starts in this file's folder, as long as it has not
-      # had a file chosen in it already.
-      def propagate_folder(which, path)
-        other = other_than(which)
-        unless @chosen[other]
-          file_dialog(other).initial_folder = Gio::File.new_for_path(File.dirname(path))
+      # The folder a log came from is where both choosers should open next:
+      # this one because that is where its user was last, and the other one
+      # because that is upstream's propagation — but only while the other is
+      # still empty, so a second log chosen elsewhere cannot drag the first
+      # chooser away from the file it is showing.
+      def remember_folder(which, folder)
+        Gio::File.new_for_path(folder).then do |location|
+          file_dialog(which).initial_folder = location
+          other_than(which).then do |other|
+            unless @chosen[other]
+              file_dialog(other).initial_folder = location
+            end
+          end
         end
       end
 

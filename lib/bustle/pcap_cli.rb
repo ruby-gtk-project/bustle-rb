@@ -3,6 +3,7 @@
 require_relative "monitor"
 require_relative "pcap_loader"
 require_relative "rb/version"
+require_relative "util"
 
 module Bustle
   # The standalone command-line recorder.
@@ -90,7 +91,6 @@ module Bustle
       @address = nil
       @filenames = []
       @invalid = nil
-      @status = 0
     end
 
     def run
@@ -234,14 +234,27 @@ module Bustle
 
       def filename = @filenames.first
 
+      # Upstream's main() in order: construct the monitor, and if that failed
+      # print the error and exit 1 without printing anything else; otherwise
+      # print the instructions, run the loop, and return 0 however the
+      # recording ended. A failure reported through `stopped` while the
+      # recording was under way is printed by #report and is not an exit
+      # status — upstream's stopped_cb quits the loop and main falls through
+      # to `return 0`.
+      #
+      # The port's equivalent of "the monitor would not construct" is a
+      # monitor that has already stopped by the time #start returns: the log
+      # could not be opened, or dbus-monitor could not be spawned at all.
       def record
-        monitor.tap do |recording|
+        monitor.start
+        if monitor.stopped?
+          1
+        else
           announce
-          trap("INT") { recording.stop }
-          recording.start
-          recording.run
+          trap("INT") { monitor.stop }
+          monitor.run
+          0
         end
-        @status
       end
 
       def monitor
@@ -262,24 +275,29 @@ module Bustle
       # message type and member for each captured message.
       def summarise(_timestamp, body)
         if verbose?
-          describe(body).then { |line| @output.puts(line) }
+          describe(body)&.then { |line| @output.puts(line) }
         end
       end
 
+      # A frame that will not unmarshal is upstream's g_dbus_message_new_from_blob
+      # returning NULL, which it reports with g_warning — so it goes to
+      # stderr, in GLib's warning format, and not into the stream of
+      # per-message summaries on stdout that `bustle-pcap -v` is piped for.
       def describe(body)
         PcapLoader::Unmarshaller.new(body).message.then do |message|
           "#{message.sender} -> #{message.destination}: #{message.type} #{message.member}"
         end
       rescue PcapLoader::Unmarshaller::Error => e
-        "Warning: #{e.message}"
+        Util.warn(e.message)
+        nil
       end
 
       # Upstream's stopped_cb: a cancellation is the user pressing Control-C
-      # and is not an error; anything else is.
+      # and is not an error; anything else is printed, and is still not an
+      # exit status.
       def report(domain, code, message)
         unless domain == Monitor::IO_ERROR_QUARK && code == Monitor::IO_ERROR_CANCELLED
           @errors.print("Error: #{domain} #{code} #{message}")
-          @status = 1
         end
       end
   end
