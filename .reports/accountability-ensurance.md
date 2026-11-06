@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `6e6fccb` |
-| Scanned | `lib/`, `exe/`, `.reports/`, `PORTING.md`, `FINDINGS.md`, `README.md`, `test/`, `spec/`, plus every prose file in the tree |
-| Tool | `accountability-ensurance/scripts/find-excuses.sh .` |
-| Findings | **7** |
-| False greens | **2** (A1, A2) |
+| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`) |
+| Scanned | `lib/`, `exe/`, `.reports/`, `PORTING.md`, `FINDINGS.md`, `README.md`, `test/`, `spec/`, `.claude/skills/`, plus every prose file in the tree |
+| Tool | `accountability-ensurance/scripts/find-excuses.sh .`, plus a direct re-run of the translation scanner and the drive/spec suite — see *Re-audit* |
+| Findings | **8** (A1–A7 carried and re-verified below; **T1 new this round**) |
+| False greens | **1 live** (T1 — a committed, unreproducible "63 ported, 4 gaps" claim). A1/A2 from the previous round are closed: the claims they flagged were re-run for real this round (see *Green claims audited*) |
 
 The rule this report enforces: no document may contain a sentence a reader could
 mistake for a decision, and the only reason any document may give for a missing
@@ -245,6 +245,80 @@ committed with this audit, so the finding stays visible rather than being quietl
 absorbed. Tracked in `.reports/translation-parity.md`.
 
 ---
+
+## Re-audit at `732e6bb` (2026-11-06)
+
+Re-checked each prior finding against the current tree rather than against the
+previous round's verdict:
+
+- **A1, A2 (component 21 unexercised, pkexec mapping unexecuted): closed,
+  re-verified.** `test/drive_bustle.rb:1341-1410` drives all three pkexec exit
+  statuses against a fabricated status (grep-confirmed this round), and
+  `test/drive_recording.rb` records a real session bus through the GUI under
+  `dbus-run-session` and was re-run for this audit: `9 of 9 checks passed,
+  DRIVE OK`. Both are honestly labelled — the pkexec path is fabricated and
+  the drive scripts say so — which is why they are closed and not a second
+  false green.
+- **A3 (open_two_dialog's missing-feature comment): still open, correctly
+  so.** `open_two_dialog.rb:17-26` still reads in the first person, names the
+  missing behaviour, and does not call it a decision. This is the one
+  remaining item the skill requires to be worded this way, and it still is.
+- **A4 (`PORTING.md` stale): closed.** The current file's header reads `Port
+  — ruby @ 71d3f60`... — still one commit behind `732e6bb` itself, which is
+  structurally unavoidable (a commit cannot name its own hash in advance) —
+  and its `## Open gaps` section lists exactly the three gaps still open,
+  matching this round's own findings (G5/G12 here, the gettext domain in
+  `translation-parity.md`). No stale "nothing has been run" sentence survives.
+- **A5 (`component-inventory.md` blockers stale): closed**, with the
+  correction left in place and dated, exactly as A5 asked for.
+- **A6 (`README.md` empty synopsis): closed.** `README.md`'s `## 🌻 Synopsis`
+  now carries three paragraphs describing what Bustle does; re-read this
+  round, not assumed from the previous one.
+- **A7 (stale `.pot`): closed.** `rake po:pot` was re-run for this audit and
+  produced **no diff** against the committed `po/messages.pot`; `rake po:check`
+  passes. The reference-block drift A7 named is gone.
+
+## T1 — a scaffold sync silently reverted the only working translation scanner, and the number it produced is now unreproducible
+
+The most serious finding this round, by the skill's own standard: a claim
+nothing currently executing can reproduce, sitting in committed documentation
+as if settled.
+
+`PORTING.md`'s "Open gaps" section states, as a closed caveat rather than an
+open gap: `catalogue.rb --compare` over both trees reports 63 ported, 4 gaps
+..., 21 port-only", crediting the fix `msgid-census.sh` received in commit
+`1990001`. That fix is real — I read the diff. **Commit `732e6bb`, "Sync the
+scaffold from port-scaffold," authored by `github-actions[bot]` nine minutes
+after `1990001` landed, reverted `msgid-census.sh` to the version that cannot
+see the port's `Bustle._("…")` marker or Haskell's `__ "…"` marker — the exact
+defect the previous round diagnosed and fixed.** Re-run for this audit:
+
+```
+$ bash .claude/skills/translation-parity/scripts/msgid-census.sh lib exe | wc -l
+0
+```
+
+Zero msgids, out of 91 call sites. Nobody wrote a sentence excusing this — it
+is worse than that: nobody noticed it happened. No test runs the skill's own
+scripts, so an automated sync that is not about this port's content at all
+quietly destroyed the audit's ability to check this port's content, and nine
+commits later `PORTING.md` still cites the dead tool's output as a fact.
+
+A reader of `PORTING.md` alone would believe the translation catalogue was
+machine-verified at "63 ported, 4 gaps." It was, once, by a tool version that
+no longer exists in this tree. `.reports/translation-parity.md`'s header this
+round carries numbers taken by hand instead (full key diff of `po/*.pot`,
+full byte diff of `po/en.po`), and they agree with the old automated number —
+but agreement between a hand count and a dead tool's memory is not the same
+claim as "the tool verified it," and `PORTING.md` still asserts the second.
+
+**Behaviour owed:** `PORTING.md` should say, in the same first-person terms
+this file demands of everyone else, that the "63 ported, 4 gaps" line is no
+longer reproducible and that I did not notice a scaffold sync had broken the
+tool it depends on until a later audit went looking. It currently does not
+say that; it still presents the number as this round's own verified fact,
+which makes `PORTING.md` itself the carrier of a false green until it is
+corrected.
 
 ## Green claims audited, and found sound
 

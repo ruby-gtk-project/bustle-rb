@@ -3,16 +3,19 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `6e6fccb` |
-| Upstream tests | **23** |
-| Ported | **23** |
+| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`) |
+| Upstream tests | **23** (14 `prop_*` in `Test/Regions.hs`, 8 `testCase` in `Test/Renderer.hs`, 1 bare-`main` regression test in `Test/PcapCrash.hs`; hand-counted this round, since the scanner still cannot see Haskell — see *Scanner defects*) |
+| Ported | **23**, hand-verified 1:1 this round: `spec/regions_spec.rb` has 14 `it`s, `spec/renderer_spec.rb` has 8, `spec/pcap_loader_spec.rb` has 2 (one bijects to upstream's single test, the second is the port's own extra assertion on the same fixture, named as extra, not substituted) |
 | Gaps | **0** |
-| Extra | 1 spec + 353 driver checks |
-| Test command run for this audit | `nix develop --command xvfb-run -a ruby -e 'require "rspec/core"; exit RSpec::Core::Runner.run(["--format", "progress", "--require", "spec_helper", "spec"])'` → **24 examples, 0 failures** |
-| Declared rake target | **`rake spec` and `rake test` do not exist in this dev shell** — see *Unrun checks* |
+| Extra | 1 spec example (`pcap_loader_spec.rb`'s second `it`) + the drive scripts' own 299 checks, which pin the port's own behaviour, not an upstream test |
+| Test command re-run for this audit | `nix develop --command xvfb-run -a ruby -e 'require "rspec/core"; exit RSpec::Core::Runner.run(["--format", "progress", "--require", "spec_helper", "spec"])'` → **24 examples, 0 failures** |
+| Drive command re-run for this audit | `nix develop --command xvfb-run -a ruby test/drive_all.rb` → **299 of 299 checks passed, DRIVE ALL OK**, 22 of 22 components covered by name |
+| Declared rake target | **`rake spec` now exists** (`rakelib/spec.rake`, added since the previous round) and was re-run directly as well: `rake spec` → 24 examples, 0 failures. `rake test` exists and runs the drive scripts. Closed; see *Unrun checks* for what is still not run by either target |
 
-The suite has been executed. This is not a paper ledger: the 23 ported tests ran,
-and so did both drive scripts.
+The suite has been executed, twice, independently, for this audit: once through
+`rake spec`/the raw RSpec runner, and once through `test/drive_all.rb`. Both are
+green and both cover all 22 components by the drive script's own named list, not
+by a subset.
 
 ## How the census was taken
 
@@ -132,22 +135,30 @@ Parity is a floor, not a ceiling: these 268 checks are the port's own and pin
 nothing upstream thought worth pinning. Three of them, however, carry a claim they
 do not earn — see `.reports/accountability-ensurance.md`, finding A1.
 
+## Re-audit at `732e6bb` (2026-11-06)
+
+`rake -T` now lists `rake spec` (`rakelib/spec.rake`, added by the "Drive all 22
+components" commit) and `rake test`; both were run for this audit, not just read
+about. `rake spec` → 24 examples, 0 failures, matching the raw runner exactly.
+That closes the previous round's "declared test target does not run" finding.
+`test/drive_all.rb` is the current coverage gate and was also re-run: 299 of 299,
+22 of 22 components, superseding the 262/268-check numbers below, which were
+`drive_bustle.rb` alone before `drive_recording.rb` was folded into the gate.
+
 ## Unrun checks
 
 Named, per the skill, rather than reported as passing.
 
-- **`rake spec` and `rake test` do not exist here.** `rake -T` in the dev shell
-  prints `NOTE: kettle-dev isn't installed, or is disabled for 3.4.9 in the
-  current environment` and lists no spec or test task; the `Rakefile`'s comment
-  block at `:51-52` advertises both. The suite is green only through the
-  hand-written `RSpec::Core::Runner.run` invocation the dev shell's banner
-  prints. A port whose declared test target does not run is one `rake spec`
-  away from a suite nobody runs.
-- **The pkexec/system-bus half of the monitor is executed by nothing** — not by
-  the specs, not by either driver. That is a coverage finding against component
-  21, carried in `.reports/accountability-ensurance.md` (A1, A2) and
-  `.reports/component-parity.md` (G1, G3), not a bijection gap: upstream has no
-  test for it either.
+- **The pkexec/system-bus half of the monitor is still executed by nothing
+  real.** `test/drive_bustle.rb` now drives the dismissed-authorisation,
+  refused-authorisation, clean-exit and non-starting-child paths — but, as
+  `PORTING.md` says plainly, against a **fabricated exit status**, not a real
+  `pkexec` prompt or a real privileged `dbus-monitor`. No specs, no driver, and
+  no part of this audit has run the system-bus path for real: doing so needs an
+  interactive polkit agent, which xvfb does not provide. That is still a
+  coverage finding against component 21, carried in
+  `.reports/accountability-ensurance.md` and `.reports/component-parity.md`
+  (G12, this round), not a bijection gap — upstream has no test for it either.
 
 ## Scanner defects
 
@@ -160,7 +171,12 @@ Reported here, and worth fixing in the skill rather than working around again.
    for a 23-test upstream, which reads as "upstream has no tests" — the one answer
    that turns a 23-gap ledger into a trivially satisfied 0/0. Two patterns would
    cover it: `^prop_[A-Za-z0-9_']+` and `testCase +"([^"]*)"`.
-2. **The port side double-counts.** 353 rows for 268 real assertions, because the
-   script collects `step(...)` as well as `check(...)` and this driver uses `step`
-   for grouping. The skill documents this trap; it is restated here because the
-   raw census number is 32% high and the next reader will see it first.
+2. **The port side double-counts.** This is a pre-existing defect in
+   `test-census.sh` itself (step/check conflation), not something this audit
+   introduced or re-measured; it is restated so the raw census number is not
+   mistaken for the 299 figure quoted elsewhere in this ledger.
+
+Neither scanner defect has been fixed in `.claude/skills/test-parity/scripts/`
+as of this audit. They are why every count above was taken by hand (reading
+the three upstream files and the three spec files directly) rather than by
+running the tool and trusting its output.

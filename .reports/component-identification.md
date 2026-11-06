@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` (Haskell + GTK3, widget trees in GtkBuilder XML) |
-| Port | `ruby` @ `6e6fccb` |
+| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`, and `.reports/component-inventory.md` was separately refreshed at `42422c4`) |
 | Method | `component-identification` skill, Steps 1–5 |
 | Scans | `component-scan.sh` run on both trees in the fork's dev shell |
 | Symbol table | **not built** — `gir-symbols.sh` was not run, so every namespaced match stayed `widget` and the strikes below were made by reading |
@@ -151,3 +151,15 @@ asserts nothing and its printing loop is commented out upstream.
 
 These are outside the 22 components and outside the four axes, and they are
 recorded here because nothing else in the repository records them.
+
+## Re-audit at `732e6bb` (2026-11-06)
+
+Re-counted rather than re-read: `find lib exe -name '*.rb'` still returns 36
+files, matching the file-mapping table above with no new or removed upstream
+source file on either side (`git ls-tree -r --name-only origin/master`
+re-diffed against `PORTING.md`'s architecture table, no new row either way).
+`README.md`'s empty `## 🌻 Synopsis` — noted above as a non-component gap in
+the previous round's identification pass — is closed; the heading now carries
+three paragraphs of real content, confirmed by reading the current file, not
+by trusting `PORTING.md`'s claim that it was fixed. The symbol table
+(`gir-symbols.sh`) is still not built, unchanged from the previous round.

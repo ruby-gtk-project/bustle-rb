@@ -3,14 +3,13 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `6e6fccb` |
-| Units with parity | **13 / 22** |
-| Gaps | **11** |
-| Runtime gate | `nix develop --command xvfb-run -a ruby test/drive_bustle.rb` → **262 of 262 checks passed, DRIVE OK**, 21 screenshots, re-run for this audit |
-| Live recording | `nix develop --command dbus-run-session -- xvfb-run -a ruby test/drive_recording.rb` → **6 of 6 checks passed**, re-run for this audit |
-| Specs | 24 examples, 0 failures (see `.reports/test-parity.md`) |
-| Step 4 (styling renders) | partly — the three Ruby stylesheets load and the drive asserts the error bar's colour and the filter list's banding; the welcome page's greyscale was compared against upstream's `.ui` by reading, not against upstream running |
-| Step 5 (behaviour fires) | yes for 21 of 22 components; component 21's live path through `drive_recording.rb`, which the 262-check gate does not include |
+| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`) |
+| Units with parity | **20 / 22** |
+| Gaps | **2** (G5, G12 below). G1–G4, G6–G11 from the previous round are re-verified closed, by reading the code the "Drive all 22 components" commit changed, not by trusting its commit message |
+| Runtime gate | re-run for this audit: `test/drive_all.rb` → **299 of 299 checks passed, DRIVE ALL OK**, 22 of 22 components covered (21 via `drive_bustle.rb`, component 21 — the live bus monitor — via `drive_recording.rb`) |
+| Specs | re-run for this audit: 24 examples, 0 failures. `rubocop lib exe test spec rakelib` re-run for this audit: 48 files, no offenses |
+| Step 4 (styling renders) | yes for all 22; same basis as the previous round (the three Ruby stylesheets load, drive asserts the error bar's colour and filter banding, welcome-page greyscale checked against the running app in this round's drive, not only against upstream's `.ui`) |
+| Step 5 (behaviour fires) | yes for all 22; the 299-check gate now includes component 21, which the previous round's 262-check gate did not |
 
 Upstream is GTK3 with its widget tree in three GtkBuilder files; the port is
 GTK4/Libadwaita with widgets as memoized methods. Nine upstream widget types have
@@ -22,28 +21,28 @@ on the CSS, signal/action and text axes.
 
 | # | Unit | Count | Style | Behaviour | Text | Verdict |
 |---:|---|:-:|:-:|:-:|:-:|---|
-| 1 | the application | ✓ | — | ✗ | ✓ | **gap** — G6 |
+| 1 | the application | ✓ | — | ✓ | ✓ | parity — G6 closed, re-verified |
 | 2 | the main window | ✓ | ✓ | ✓ | ✓ | parity |
 | 3 | the header bars | ✓ | ✓ | ✓ | ✓ | parity |
 | 4 | menus, actions, shortcuts | ✓ | ✓ | ✓ | ✓ | parity |
 | 5 | the error state | ✓ | ✓ | ✓ | ✓ | parity |
-| 6 | the empty state | ✓ | ✗ | ✓ | ✓ | **gap** — G7 |
+| 6 | the empty state | ✓ | ✓ | ✓ | ✓ | parity — G7 closed, re-verified |
 | 7 | the waiting page | ✓ | ✓ | ✓ | ✓ | parity |
 | 8 | the diagram canvas | ✓ | ✓ | ✓ | — | parity |
-| 9 | the details pane | ✓ | ✗ | ✓ | ✓ | **gap** — G8 |
+| 9 | the details pane | ✓ | ✓ | ✓ | ✓ | parity — G8 closed, re-verified |
 | 10 | the statistics sidebar | ✓ | ✓ | ✓ | ✓ | parity |
 | 11 | the service filter dialog | ✓ | ✓ | ✓ | ✓ | parity |
-| 12 | open a pair of logs | ✓ | ✓ | ✗ | ✓ | **gap** — G5 |
-| 13 | record an arbitrary address | ✓ | ✓ | ✗ | ✓ | **gap** — G4 |
+| 12 | open a pair of logs | ✓ | ✓ | ✗ | ✓ | **gap** — G5, still open |
+| 13 | record an arbitrary address | ✓ | ✓ | ✓ | ✓ | parity — G4 closed, re-verified |
 | 14 | open one log | ✓ | ✓ | ✓ | ✓ | parity |
 | 15 | export as PDF | ✓ | ✓ | ✓ | ✓ | parity |
 | 16 | the recording flow | ✓ | ✓ | ✓ | ✓ | parity |
 | 17 | unsaved-recording confirmation | ✓ | ✓ | ✓ | ✓ | parity |
 | 18 | the about dialog | ✓ | ✓ | ✓ | ✓ | parity |
-| 19 | the batch CLI modes | ✓ | — | ✗ | ✓ | **gap** — G9 |
-| 20 | the `bustle-pcap` binary | ✓ | — | ✗ | — | **gap** — G2, G10, G11 |
-| 21 | the live bus monitor | ✓ | — | ✗ | — | **gap** — G1, G3 |
-| 22 | data files and catalogue | ✓ | — | — | ✗ | **gap** — the `Icon=` msgid, tracked in `.reports/translation-parity.md` |
+| 19 | the batch CLI modes | ✓ | — | ✓ | ✓ | parity — G9 closed, re-verified |
+| 20 | the `bustle-pcap` binary | ✓ | — | ✓ | — | parity — G2, G10, G11 closed, re-verified |
+| 21 | the live bus monitor | ✓ | — | ✗ | — | **gap** — G1, G3 closed, re-verified; **G12 new** (error precedence, below) |
+| 22 | data files and catalogue | ✓ | — | — | ✓ | parity — the `Icon=` msgid now extracted (`data/org.rubygtkproject.Bustle.desktop.in:5`), re-verified |
 
 ## The gaps
 
@@ -294,3 +293,67 @@ Not gaps; recorded so no later pass reports them as missing.
   icon-only buttons now express structurally (`header_bar.rb:138-200`).
 - `GLib.format_size` for upstream's `g_format_size` FFI shim
   (`missing.rb`), so size strings keep coming out of GLib's own catalogue.
+
+## Re-audit at `732e6bb` (2026-11-06)
+
+Re-run rather than re-read: `test/drive_all.rb` under `nix develop --command
+xvfb-run -a ruby`, `rake spec` under the same display, and `rubocop` over
+`lib exe test spec rakelib`. All three are clean (299/299, 24/0, 48 files/no
+offenses), and `test/drive_all.rb`'s own coverage line lists all 22 component
+numbers, so the gate is not narrow this round.
+
+**G1, G2, G4, G6–G11 confirmed closed**, by reading the current code, not the
+commit message that claims it:
+
+- G1 (stop could hang forever): `lib/bustle/monitor.rb:94` defines
+  `STOP_TIMEOUT_SECONDS = 2` and `#arm_stop_timeout` (`monitor.rb:479-490`)
+  force-exits and calls `finish` after it, mirroring upstream's
+  `await_both_errors`. Driven at `test/drive_bustle.rb` (polkit dismissed,
+  refused, clean-exit and non-starting-child cases), against a fabricated
+  exit status in every case — admitted as such in `PORTING.md`, not claimed as
+  a real pkexec run.
+- G2 (`bustle-pcap` exit code): `lib/bustle/pcap_cli.rb` now distinguishes
+  "monitor would not start" (exit 1) from a runtime error (exit 0), matching
+  upstream.
+- G4 (Enter in Record Address): the entry now has a signal handler that
+  activates the dialog's default response.
+- G6 (application name): `Bustle._("Bustle")` is passed to
+  `GLib.application_name=` (checked: `lib/bustle/application.rb`).
+- G7/G8 (welcome page greyscale, Arguments caption): `welcome_page.rb` now
+  builds the 256px greyscale image and dims the caption to match upstream's
+  `.ui`; the drive screenshots it.
+- G9 (`bustle` argument handling): `lib/bustle/main.rb` matches `["--help"]`
+  as a whole and strips only `--debug` before handing the rest to the loader.
+- G10/G11 (`bustle-pcap` announce timing, frame-warning stream/wording):
+  `pcap_cli.rb` now waits for the subprocess to spawn before announcing, and
+  an unparseable frame warns on stderr in upstream's words.
+
+**G3 (the `stopped` signal's domain/code) is closed for the half it named**
+— `report_exit` (`monitor.rb:521-531`) now carries `SPAWN_EXIT_ERROR_QUARK`
+and the real exit status for a child that exited — **but driving it surfaced
+a second, narrower divergence that G3's text did not cover**, carried forward
+as new finding **G12** below, because closing the ticket and closing the
+behaviour are not the same claim.
+
+**G5 (Open-a-Pair folder travel) is still open.** `lib/bustle/open_two_dialog.rb:17-26`
+still carries the same first-person admission: `Gtk::FileDialog` has no
+`current-folder-changed` signal, so browsing (without picking) in one chooser
+no longer moves the other. Confirmed unchanged against upstream
+`OpenTwoDialog.hs:36-44`.
+
+### G12 — the monitor does not prefer the libpcap error over the subprocess one (new this round)
+
+Upstream's `await_both_errors`/`handle_error` (`c-sources/pcap-monitor.c:359-412`)
+deliberately waits for both the pcap-parse error and the subprocess exit error
+and then reports the pcap one, "including the wonderful snaplen bug" — pcap
+errors are more specific. The port's `Monitor#finish` (`monitor.rb:498-504`)
+has only one error path, `report_exit`, fed by the subprocess's wait status;
+there is no second, pcap-side error source to arbitrate against, so whichever
+happens to be read first (empirically the pcap-side read, since it runs
+inline in `#drain`) wins by construction, not by the upstream rule. No test in
+either drive script exercises the two racing, so this has not been seen to
+misbehave — it is a structural gap, not an observed bug. Behaviour owed: when
+a dbus-monitor subprocess dies with a generic error *and* the pcap stream it
+was writing is independently malformed, the user should see the pcap
+complaint, not whichever one the port's single-error-slot design happened to
+read first.

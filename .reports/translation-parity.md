@@ -3,20 +3,18 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `6e6fccb` |
+| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`) |
 | Domain | **none** — the port reads `po/*.po` at runtime instead of binding a gettext domain. See *Delivery* |
-| Upstream messages | **66** (distinct `(msgctxt, msgid)` keys in `po/messages.pot`) |
-| Ported | **65** |
-| Gaps | **1** |
-| Extra (untranslated by definition) | **23** |
-| Upstream occurrences | 81 reference sites over 66 messages (3 reused: `Bustle` ×3, `_Record` ×2, `Draw sequence diagrams of D-Bus activity` ×2) |
-| Port occurrences | 108 reference sites over 88 messages; 90 call sites in `lib/` and `exe/` over 76 keys |
-| Upstream languages | **1** `.po` file (`en`), 35 translated, 0 untranslated, 0 fuzzy, 0 obsolete; `LINGUAS` matches |
-| Languages shipped by the port | **1** (`en`), **all 35 translations byte-identical** |
+| Upstream messages | **66** (distinct msgids in `po/messages.pot`, header excluded; hand-parsed this round — see *Re-audit*) |
+| Ported | **65**, hand-verified by a full key diff this round |
+| Gaps | **1** — unchanged from the previous round, see below |
+| Extra (untranslated by definition) | **24** (89 port keys − 65 shared) |
+| Upstream `po/en.po` | **36** msgid blocks including the header, i.e. **35** real translated strings; byte-identical to the port's `po/en.po`, confirmed by a full diff this round, zero difference |
+| Languages shipped by the port | **1** (`en`), **all 35 translations byte-identical to upstream's** — reconfirmed by diff, not by re-reading last round's claim |
 | Plurals | 0 upstream, 0 in the port |
 | `msgctxt` | 0 upstream, 0 in the port |
 | Build command | `nix develop --command rake po:pot` (extract); `rake data:merge` (merge into the desktop entry and the appdata) |
-| On-screen check | **run** — see *Delivery* |
+| **Scanner status this round** | **broken.** `.claude/skills/translation-parity/scripts/msgid-census.sh` finds **0** msgids in `lib/` and `exe/` — re-run directly for this audit, not inferred. See *Re-audit*: the fix that made it usable was reverted after the previous round closed. Every number in this table was produced by hand-parsing the `.po`/`.pot` files directly, not by running this script |
 
 `en` is the whole catalogue: it translates Will Thompson's English into Will
 Thompson's English (`'%s'` → `‘%s’`, `-` → `–`), which is small but is the only
@@ -291,3 +289,56 @@ Both should be fixed in the skill, not worked around again here.
    not run, because with both censuses this wrong its output would be fiction.
    The numbers in this ledger's header therefore come from the hand census and
    the two `.pot` files; no YAML was generated, and none was hand-edited.
+
+## Re-audit at `732e6bb` (2026-11-06): the scanner regressed between rounds
+
+The previous round's `PORTING.md` entry for this audit records that
+`msgid-census.sh` "saw neither side's marker until this round" and that fixing
+it let `catalogue.rb --compare` run and report "63 ported, 4 gaps ... 21
+port-only." That fix was real: commit `1990001` changed
+`.claude/skills/translation-parity/scripts/msgid-census.sh` to allow a
+qualified receiver (`Bustle._("…")`, which is how most of this port's call
+sites are written) and to read Haskell's `__ "…"` marker.
+
+**Commit `732e6bb`, "Sync the scaffold from port-scaffold," reverted that fix
+file-for-file**, 29 lines removed with no replacement, as an automated
+scaffold sync — not as a reviewed decision about this port. Re-run for this
+audit:
+
+```
+$ bash .claude/skills/translation-parity/scripts/msgid-census.sh lib exe | wc -l
+0
+```
+
+Zero. The scanner cannot see a single one of the port's 91 `Bustle._(...)`
+call sites, for the exact reason the previous round diagnosed and fixed: the
+qualified-receiver pattern was removed again. It also once again cannot read
+`__ "…"` in any Haskell file, which matters for re-censusing upstream from
+scratch rather than trusting the committed `.pot`.
+
+**This means `PORTING.md`'s "63 ported, 4 gaps, 21 port-only" is no longer a
+claim anyone can reproduce.** It was true when it was written, by a tool that
+no longer exists in this form. Nothing in the repository flagged the
+reversion — no test runs the skill's own scripts, so a scaffold sync silently
+re-broke the audit tooling and the first sign of it is this round noticing
+that the number in `PORTING.md` cannot be regenerated. That is the shape of
+false-green the `accountability-ensurance` skill exists to catch, carried
+forward there as finding T1.
+
+**The port's actual translation parity was re-established by hand for this
+round, not by trusting the stale automated number**: a full key diff of
+`po/messages.pot` (upstream 66 keys, port 89 keys, exactly one upstream key —
+the application ID string `org.freedesktop.Bustle`, renamed to
+`org.rubygtkproject.Bustle` because the port is a different app ID — absent
+from the port's set) and a full byte diff of `po/en.po` (identical, 35
+translated strings, zero difference). The **1 gap** and **65 ported** figures
+in the header above are this hand count, and they happen to match what the
+now-unreproducible automated run claimed — which is reassuring but is not
+itself proof; it means the hand count and the dead tool agree, not that the
+tool works.
+
+The scanner fix has not been reapplied in this commit. Reapplying it inside
+`.claude/skills/` would itself be reverted by the next scaffold sync unless
+the sync process is told to preserve local script fixes, which is outside
+this audit's scope to arrange — named here so it is not silently redone and
+silently re-lost a third time.
