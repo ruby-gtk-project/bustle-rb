@@ -218,7 +218,7 @@ namespace :po do
 
 
   desc "Check that #{POT_PATH} is up to date and every catalogue compiles"
-  task :check do
+  task check: :census_smoke do
     require "tmpdir"
     Dir.mktmpdir do |dir|
       File.join(dir, "messages.pot").then do |regenerated|
@@ -236,6 +236,17 @@ namespace :po do
         File.join("po", "#{language}.po"),
       )
     end
+  end
+
+  # .reports/accountability-ensurance.md T1: an automated scaffold sync once
+  # silently reverted the translation-parity skill's own census script, and
+  # nothing ran it as a check, so the regression went unnoticed for nine
+  # commits. This task is that check, wired into the normal `po:check` path
+  # so a future sync that drops the fix fails the build instead of going
+  # quiet again.
+  desc "Smoke-test the translation-parity skill's msgid census script"
+  task :census_smoke do
+    sh("bash", ".claude/skills/translation-parity/scripts/census-smoke.sh")
   end
 end
 

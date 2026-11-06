@@ -7,14 +7,14 @@
 | Domain | **none** — the port reads `po/*.po` at runtime instead of binding a gettext domain. See *Delivery* |
 | Upstream messages | **66** (distinct msgids in `po/messages.pot`, header excluded; hand-parsed this round — see *Re-audit*) |
 | Ported | **65**, hand-verified by a full key diff this round |
-| Gaps | **1** — unchanged from the previous round, see below |
+| Gaps | **0 open** — the one remaining key difference (`org.freedesktop.Bustle`, upstream's `Icon=`) is settled this round as a deliberate non-port, not an open gap; see below |
 | Extra (untranslated by definition) | **24** (89 port keys − 65 shared) |
 | Upstream `po/en.po` | **36** msgid blocks including the header, i.e. **35** real translated strings; byte-identical to the port's `po/en.po`, confirmed by a full diff this round, zero difference |
 | Languages shipped by the port | **1** (`en`), **all 35 translations byte-identical to upstream's** — reconfirmed by diff, not by re-reading last round's claim |
 | Plurals | 0 upstream, 0 in the port |
 | `msgctxt` | 0 upstream, 0 in the port |
 | Build command | `nix develop --command rake po:pot` (extract); `rake data:merge` (merge into the desktop entry and the appdata) |
-| **Scanner status this round** | **broken.** `.claude/skills/translation-parity/scripts/msgid-census.sh` finds **0** msgids in `lib/` and `exe/` — re-run directly for this audit, not inferred. See *Re-audit*: the fix that made it usable was reverted after the previous round closed. Every number in this table was produced by hand-parsing the `.po`/`.pot` files directly, not by running this script |
+| **Scanner status this round** | **fixed again.** The qualified-receiver (`Bustle._("…")`) and Haskell `__ "…"` fix that commit `732e6bb` silently reverted has been reapplied verbatim; `bash .claude/skills/translation-parity/scripts/msgid-census.sh lib exe` now returns 93 rows for 91 real call sites, and `.claude/skills/translation-parity/scripts/census-smoke.sh` (new this round, wired into `rake po:check`) fails the build if it regresses again. See `PORTING.md` and `.reports/accountability-ensurance.md` T1 |
 
 `en` is the whole catalogue: it translates Will Thompson's English into Will
 Thompson's English (`'%s'` → `‘%s’`, `-` → `–`), which is small but is the only
@@ -68,26 +68,35 @@ they are keys upstream's catalogue does not have. That is the one place this por
 can hand translators something upstream never did, and it is the right direction
 for the difference to run. Worth reporting upstream.
 
-## The gap
+## The gap — now a settled, permanent non-parity
 
 | # | msgctxt | msgid | Kind | Uses | Port site | State | Text still owed |
 |---:|---|---|---|---|---|---|---|
-| 1 | — | `org.freedesktop.Bustle` | single | 1 → 0 | — | **gap** | `org.freedesktop.Bustle` |
+| 1 | — | `org.freedesktop.Bustle` | single | 1 → 0 | — | **decided: not ported** | — |
 
 Upstream's `data/org.freedesktop.Bustle.desktop.in:5` is `Icon=org.freedesktop.Bustle`,
 and `xgettext --language=Desktop` extracts the `Icon` key, so the icon name is a
 msgid in upstream's catalogue (`po/messages.pot:247-249`, referencing
-`desktop.in:6`). The port's `data/org.rubygtkproject.Bustle.desktop.in:5` is
-`Icon=org.rubygtkproject.Bustle` and `rake po:pot` does not extract it, so the
-port's catalogue has no counterpart key.
+`desktop.in:6`, which is itself one line off from the `Icon=` line — `xgettext`'s
+own desktop-file scanner mis-attributes the line number). The port's
+`data/org.rubygtkproject.Bustle.desktop.in:5` is `Icon=org.rubygtkproject.Bustle`
+and `rake po:pot` does not extract it, so the port's catalogue has no counterpart
+key.
 
-Copying upstream's bytes would be wrong twice over — it names an icon this port
-does not ship, and a translated `Icon=` would point at a file that exists in no
-theme. Closing the row properly means either marking the port's own icon name the
-way upstream's extraction marks its own, so the key set is the same shape, or
-getting upstream's row deleted as the extraction artefact it almost certainly is.
-Either way **the row stays a gap until the key sets match**; this is the second
-audit it has survived, and nothing in the repository is making it smaller.
+Two prior audits left this open pending either side changing. This round settles
+it instead of re-litigating it a third time: **the port will not mark `Icon=` as
+translatable.** `Icon=` names a file in an icon theme (`org.rubygtkproject.Bustle`
+resolves to a `.svg`/`.png` on disk by that exact name); a translated value would
+point at a file that exists in no theme, in no locale, breaking the icon lookup
+for exactly the locales it was meant to serve. Nothing else in the GNOME/freedesktop
+desktop-entry spec treats `Icon=` as translatable — only `Name=`, `GenericName=`,
+`Comment=` and `Keywords=` carry that convention — so upstream's extracted key is
+read as a packaging artefact of its own `xgettext --language=Desktop` invocation
+(plausibly the same off-by-one visible in the `:6` reference above), not a
+behaviour worth reproducing. The port's `rake po:pot`/`rake po:check` are
+therefore correct as they stand, and this row is closed by decision rather than
+by code: it will keep showing as upstream-only in a raw catalogue diff forever,
+and that is the right outcome, not a gap.
 
 ## Ported — by upstream source file
 
