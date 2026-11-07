@@ -132,6 +132,7 @@ module Bustle
       @started = false
       @stopped = false
       @cancelled = false
+      @pcap_error = nil
     end
 
     attr_reader :filename, :target
@@ -253,7 +254,7 @@ module Bustle
         @output.write(chunk)
         @output.flush
         @buffer << chunk.b
-        unless read_global_header || @stopped
+        unless read_global_header || @stopped || @pcap_error
           emit_frames
         end
       end
@@ -273,11 +274,13 @@ module Bustle
       def parse_global_header
         @buffer.slice!(0, PcapLoader::GLOBAL_HEADER_SIZE).then do |header|
           @byte_order = byte_order_of(header)
-          link_type = unpack_word(header[20, 4])
-          if [PcapLoader::LINK_TYPE_NULL, PcapLoader::LINK_TYPE_DBUS].include?(link_type)
-            seed_names
-          else
-            stop_with(IO_ERROR_FAILED, "Incorrect link type #{link_type}")
+          unless @pcap_error
+            link_type = unpack_word(header[20, 4])
+            if [PcapLoader::LINK_TYPE_NULL, PcapLoader::LINK_TYPE_DBUS].include?(link_type)
+              seed_names
+            else
+              fail_pcap("Incorrect link type #{link_type}")
+            end
           end
         end
       end
@@ -407,7 +410,7 @@ module Bustle
         when "d4c3b2a1" then :little
         when "a1b2c3d4" then :big
         else
-          stop_with(IO_ERROR_FAILED, "Couldn't read messages from dbus-monitor: not a pcap stream")
+          fail_pcap("Couldn't read messages from dbus-monitor: not a pcap stream")
           :little
         end
       end
@@ -493,6 +496,24 @@ module Bustle
         end
       end
 
+      # Upstream's read_one() hands a bad pcap stream (wrong magic, an
+      # unrecognised link type) back as self->pcap_error rather than tearing
+      # the recorder down on the spot, because handle_error() wants the
+      # chance to weigh it against whatever the subprocess itself reports —
+      # see #report_exit. So this does what #stop does to make the
+      # subprocess go away — terminate it, close the read end so a laggard
+      # dies of EPIPE, arm the same fallback timeout — without declaring the
+      # stop itself; that is left for the EOF this provokes to report
+      # through the normal #finish path.
+      def fail_pcap(message)
+        unless @pcap_error
+          @pcap_error = message
+          terminate
+          close_pipe
+          arm_stop_timeout
+        end
+      end
+
       # End of the pipe: the recording is over. A stop the user asked for is
       # reported as cancelled, which is the one error the recorder swallows.
       def finish
@@ -518,6 +539,18 @@ module Bustle
       # signal has no exit status to report, so it keeps the GIOError domain
       # — upstream's would carry G_SPAWN_ERROR, whose numbering the Ruby
       # bindings do not expose.
+      #
+      # Upstream's handle_error() weighs a pcap_error against a
+      # subprocess_error only after the pkexec and clean-exit cases above
+      # have had their say — those two are reported unconditionally — and
+      # only when it has no more specific subprocess_error of its own: "If no
+      # pkexec errors, prefer potentially more informative errors from
+      # libpcap, including the wonderful snaplen bug." A libpcap failure
+      # (#fail_pcap) outranks a bare non-zero exit status for the same
+      # reason it does upstream — dbus-monitor exiting badly is usually just
+      # it noticing the pipe it was writing a corrupt or truncated stream
+      # into had gone away, and the pcap-level error says what actually went
+      # wrong.
       def report_exit(status)
         if @target == SYSTEM_BUS && status&.exitstatus == PKEXEC_DISMISSED_STATUS
           stop_with(IO_ERROR_CANCELLED, "User dismissed polkit authorization dialog")
@@ -525,6 +558,8 @@ module Bustle
           stop_with(IO_ERROR_PERMISSION_DENIED, "Not authorized to monitor system bus")
         elsif status&.exitstatus&.zero?
           stop_with(IO_ERROR_CANCELLED, "dbus-monitor exited cleanly")
+        elsif @pcap_error
+          stop_with(IO_ERROR_FAILED, @pcap_error)
         elsif status&.exitstatus
           stop_with(status.exitstatus, prefixed(spawn_message(status)), domain: SPAWN_EXIT_ERROR_QUARK)
         else

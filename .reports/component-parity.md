@@ -4,8 +4,8 @@
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
 | Port | `ruby` @ `9086e5b` (re-audited this round; `lib/`, `exe/`, `data/`, `po/` are byte-identical to the `732e6bb` state below — `git diff 732e6bb..9086e5b -- lib exe data po` is empty) |
-| Units with parity | **20 / 22** |
-| Gaps | **2** (G5, G12 below). As of `PORTING.md` (commit `ae190b4`), G5 is now accepted **permanently** — not reopened a third audit running — because closing it needs a hand-built `GtkFileChooserWidget` replacement for `Gtk::FileDialog`, a different, larger component than a signal hookup. G12 is still open and re-verified below. G1–G4, G6–G11 from the previous round remain closed; nothing in `lib/`/`exe/` has changed since they were verified, so they were not re-derived from scratch this round |
+| Units with parity | **21 / 22** |
+| Gaps | **1** (G5 below). As of `PORTING.md` (commit `ae190b4`), G5 is accepted **permanently** — not reopened a third audit running — because closing it needs a hand-built `GtkFileChooserWidget` replacement for `Gtk::FileDialog`, a different, larger component than a signal hookup. **G12 is closed this round**: `lib/bustle/monitor.rb` now defers a bad-magic or bad-link-type pcap error (`#fail_pcap`) instead of reporting it on the spot, letting the subprocess run to its own exit so `#report_exit` can apply upstream's precedence — pkexec 126/127 and a clean exit still win unconditionally, then a pcap-side error over a bare non-zero exit, exactly as `handle_error` orders it — covered by `spec/monitor_spec.rb`. G1–G4, G6–G11 from the previous round remain closed; nothing else in `lib/`/`exe/` has changed since they were verified, so they were not re-derived from scratch this round |
 | Runtime gate | re-run for this audit, from a clean shell: `test/drive_all.rb` → **299 of 299 checks passed, DRIVE ALL OK**, 22 of 22 components covered (21 via `drive_bustle.rb`, component 21 — the live bus monitor — via `drive_recording.rb`). Exact match to the number below |
 | Specs | re-run for this audit: 24 examples, 0 failures, matching the number below exactly |
 | Step 4 (styling renders) | yes for all 22; same basis as the previous round (the three Ruby stylesheets load, drive asserts the error bar's colour and filter banding, welcome-page greyscale checked against the running app in this round's drive, not only against upstream's `.ui`) |
@@ -41,7 +41,7 @@ on the CSS, signal/action and text axes.
 | 18 | the about dialog | ✓ | ✓ | ✓ | ✓ | parity |
 | 19 | the batch CLI modes | ✓ | — | ✓ | ✓ | parity — G9 closed, re-verified |
 | 20 | the `bustle-pcap` binary | ✓ | — | ✓ | — | parity — G2, G10, G11 closed, re-verified |
-| 21 | the live bus monitor | ✓ | — | ✗ | — | **gap** — G1, G3 closed, re-verified; **G12 new** (error precedence, below) |
+| 21 | the live bus monitor | ✓ | — | ✓ | — | parity — G1, G3 closed, re-verified; **G12 closed this round** (error precedence, below) |
 | 22 | data files and catalogue | ✓ | — | — | ✓ | parity — the `Icon=` msgid now extracted (`data/org.rubygtkproject.Bustle.desktop.in:5`), re-verified |
 
 ## The gaps
@@ -341,19 +341,41 @@ still carries the same first-person admission: `Gtk::FileDialog` has no
 no longer moves the other. Confirmed unchanged against upstream
 `OpenTwoDialog.hs:36-44`.
 
-### G12 — the monitor does not prefer the libpcap error over the subprocess one (new this round)
+### G12 — closed this round: the monitor now prefers the libpcap error over the subprocess one
 
 Upstream's `await_both_errors`/`handle_error` (`c-sources/pcap-monitor.c:359-412`)
 deliberately waits for both the pcap-parse error and the subprocess exit error
-and then reports the pcap one, "including the wonderful snaplen bug" — pcap
-errors are more specific. The port's `Monitor#finish` (`monitor.rb:498-504`)
-has only one error path, `report_exit`, fed by the subprocess's wait status;
-there is no second, pcap-side error source to arbitrate against, so whichever
-happens to be read first (empirically the pcap-side read, since it runs
-inline in `#drain`) wins by construction, not by the upstream rule. No test in
-either drive script exercises the two racing, so this has not been seen to
-misbehave — it is a structural gap, not an observed bug. Behaviour owed: when
-a dbus-monitor subprocess dies with a generic error *and* the pcap stream it
-was writing is independently malformed, the user should see the pcap
-complaint, not whichever one the port's single-error-slot design happened to
-read first.
+and then reports the pcap one ahead of a bare non-zero exit, "including the
+wonderful snaplen bug" — but still behind the pkexec 126/127 cases and a clean
+exit (0), which `handle_error` reports unconditionally regardless of a pending
+pcap error.
+
+The port previously had only one error path, `report_exit`, fed by the
+subprocess's wait status, with pcap-level problems (bad magic, an
+unrecognised link type) reported immediately and synchronously instead of
+held for comparison — so whichever happened to be read first won by
+construction, not by rule.
+
+Fixed by giving `Monitor` a second error slot, `@pcap_error`
+(`lib/bustle/monitor.rb`): `#fail_pcap` records it and does what `#stop` does
+to the subprocess — terminate it, close the read end, arm the existing
+stop timeout — without declaring the stop itself, leaving that to the EOF
+this provokes. `#report_exit` now checks `@pcap_error` after the pkexec and
+clean-exit cases (which still win unconditionally, matching upstream) and
+before falling back to the subprocess's own exit message, so a libpcap
+failure racing a generic non-zero exit is reported as the libpcap failure.
+
+Covered by `spec/monitor_spec.rb`: the global-header dispatch tests drive
+`#fail_pcap` directly from a bad magic number and from an unrecognised link
+type; the exit-status-mapping tests drive `#report_exit` with real
+`Process::Status` objects (via `Process.spawn("sh", "-c", "exit N")`) to
+confirm pkexec and clean-exit still win over a pending `@pcap_error`, that a
+bare non-zero exit is reported as the subprocess's own error when there is no
+pcap error, and that a pcap error wins over a bare non-zero exit when both
+are present — the scenario named "G12" in the spec. The same file also drives
+a real, stubbed subprocess (`Open3.popen3` against a shell script, not
+`dbus-monitor`) through `#start`/`#run`/`#stop` to exercise the pcap frame
+parser and subprocess supervisor end to end, closing the wider gap named in
+`.reports/accountability-ensurance.md` finding A1 — component 21 had no
+coverage of its own beyond a 3-branch `case` statement and the one
+happy-path recording in `test/drive_recording.rb`.

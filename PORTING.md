@@ -108,7 +108,7 @@ The audit at port `71d3f60` reported 19 gaps, `clean=false`: 12 in
 `.reports/component-parity.md`, 4 in `.reports/translation-parity.md`, 1 in
 `.reports/test-parity.md` and 7 in `.reports/accountability-ensurance.md`
 (two rows appear in two ledgers by design). The commit after this file closed
-all but the three below. Each of those three is open because closing it costs
+all but the two below. Each of those two is open because closing it costs
 more than it is worth, and each is named in the code that owns it, in the
 first person, as missing work rather than as a decision.
 
@@ -124,16 +124,27 @@ first person, as missing work rather than as a decision.
    `Gtk::FileDialog`, which is a different, much larger component than a
    signal hookup, and the common case (folder travels with the chosen file)
    already works.
-2. **The monitor does not prefer the libpcap error over the subprocess one.**
-   Upstream's `await_both_errors`/`handle_error` waits for both and then
-   reports libpcap's, "including the wonderful snaplen bug"
-   (`c-sources/pcap-monitor.c:393-412`, `:359-368`). The port reports
-   whichever arrives first, which in practice is the pcap-side error because
-   it is raised while reading, so the two agree in every case tried; the
-   explicit precedence rule is still not implemented.
-3. **No gettext domain.** As under **Not started** above: a run-time PO
+2. **No gettext domain.** As under **Not started** above: a run-time PO
    reader instead of a bound domain, so no plural forms, no `msgctxt` and no
    `.mo` install rule.
+
+Closed this round: **the monitor now prefers the libpcap error over the
+subprocess one.** Upstream's `await_both_errors`/`handle_error` waits for
+both and then reports libpcap's, "including the wonderful snaplen bug"
+(`c-sources/pcap-monitor.c:393-412`, `:359-368`), ahead of a bare non-zero
+exit — but still behind the pkexec 126/127 cases and a clean exit (0), which
+upstream reports unconditionally. `lib/bustle/monitor.rb`'s bad-magic and
+bad-link-type checks now record a pcap-side error and let the subprocess
+run to its own exit (terminating it and arming the existing stop timeout)
+instead of tearing the recording down on the spot, so `#report_exit` can
+weigh the two against each other in upstream's order; previously the port's
+single error path meant whichever was read first won by construction, not
+by rule. Covered by `spec/monitor_spec.rb`, which also closes the wider gap
+named in `.reports/accountability-ensurance.md` finding A1: component 21 had
+no coverage at all of the pcap frame parser, the exit-status mapping or
+subprocess supervision beyond a 3-branch `case` statement and the one
+drive-recording happy path, both of which remain, as drive checks exercising
+the real D-Bus and process machinery the specs stub out.
 
 What the round before this one left behind, and this round closed, so that it
 is not looked for again: `Monitor#stop` now closes the read end of
@@ -170,14 +181,23 @@ but limit what every verdict above is worth:
   the `*.hs` / `haskell` marker handling) and confirms it against this tree:
   `bash .claude/skills/translation-parity/scripts/msgid-census.sh lib exe`
   now returns 93 rows against the 91 real `Bustle._(...)` call sites (two
-  rows are the `.desktop`/`.po` extras the script also counts), and
-  `catalogue.rb --compare` over `origin/master` and this branch reports 57
-  ported, 10 gaps, 19 port-only — different from the earlier "63 ported, 4
-  gaps, 21 port-only" because the trees have moved since, not because the
-  scanner is still broken. See `.reports/accountability-ensurance.md`,
-  finding T1, and `.claude/skills/translation-parity/scripts/census-smoke.sh`,
-  added this round so a future sync that drops this fix fails a check instead
-  of going unnoticed for nine commits.
+  rows are the `.desktop`/`.po` extras the script also counts), and the
+  scanner is genuinely fixed: `census-smoke.sh`, added this round, pins that
+  down so a future sync that drops the fix again fails a check instead of
+  going unnoticed for nine commits. This paragraph previously went on to cite
+  a specific `catalogue.rb --compare` number as settled fact; that number did
+  not reproduce (finding T2, `.reports/accountability-ensurance.md`) and has
+  been removed from here rather than replaced with another one this document
+  would go stale against. `catalogue.rb --compare` is a message-by-message
+  machine count, not a parity verdict — a "gap" it reports can be a message
+  the port genuinely has not ported, or one the port phrases differently on
+  purpose, and telling those apart is exactly the judgement
+  `.reports/translation-parity.md` exists to carry. Read that report's own
+  header figures for the current count; they are regenerated and checked
+  against the tree every round, which a number copied into this file is not.
+
+  See `.reports/accountability-ensurance.md`, finding T1 (the scanner fix
+  itself) and finding T2 (the stale number this paragraph used to repeat).
 
 ## Blockers
 
