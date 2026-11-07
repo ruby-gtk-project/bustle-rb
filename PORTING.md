@@ -7,9 +7,9 @@ repository; the port is the `ruby` branch. Read upstream with
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `71d3f60` (this file is updated by the commit after it) |
-| Last audit | `.reports/*` @ port `71d3f60` — 19 gaps, `clean=false` |
-| Verified by | `ruby test/drive_all.rb` — 22 of 22 components, both drive scripts |
+| Port | `ruby` @ `0d60536` (this file is updated by the commit after it) |
+| Last audit | `.reports/*` @ port `9086e5b`/`9223da6` — 2 gaps, `clean=false` |
+| Verified by | `test/drive_all.rb`, re-run for this commit: 299 of 299 checks, 22 of 22 components, `DRIVE ALL OK`; `rake spec`, re-run for this commit: 38 examples, 0 failures |
 
 ## Upstream
 
@@ -85,6 +85,25 @@ in `spec/monitor_spec.rb`, added with the G12 fix; see
 `.reports/accountability-ensurance.md`, finding A8, for the fact that this
 number drifted in every report that cited it until this audit round).
 
+## Runtime
+
+Re-run for this commit (`0d60536`), from a clean shell:
+
+```
+nix develop --command xvfb-run -a ruby test/drive_all.rb
+```
+
+Result: `drive_ok=true` — 299 of 299 checks passed over the two drive scripts
+(290 from `test/drive_bustle.rb`, 9 from `test/drive_recording.rb`), 22 of 22
+components covered (1–20 and 22 via `drive_bustle.rb`, component 21 — the
+live bus monitor — via `drive_recording.rb`), `DRIVE ALL OK`.
+
+```
+nix develop --command xvfb-run -a rake spec
+```
+
+Result: 38 examples, 0 failures.
+
 ## Not started
 
 No upstream source file is without a Ruby counterpart. `Test/DumpMessages.hs`
@@ -107,13 +126,17 @@ Non-component work not started:
 
 ## Open gaps
 
-The audit at port `71d3f60` reported 19 gaps, `clean=false`: 12 in
-`.reports/component-parity.md`, 4 in `.reports/translation-parity.md`, 1 in
-`.reports/test-parity.md` and 7 in `.reports/accountability-ensurance.md`
-(two rows appear in two ledgers by design). The commit after this file closed
-all but the two below. Each of those two is open because closing it costs
-more than it is worth, and each is named in the code that owns it, in the
-first person, as missing work rather than as a decision.
+As of this audit round (`.reports/*` re-audited at port `9086e5b`, then
+`9223da6` for the G12 fix): `.reports/component-parity.md` reports **1** open
+gap (G5 below), `.reports/translation-parity.md` reports **0**,
+`.reports/test-parity.md` reports **0**, and
+`.reports/accountability-ensurance.md` carries **1** still-open finding (A3)
+that names the same G5 gap from the accountability angle rather than a
+second defect. So the distinct count is **2 gaps, `clean=false`**: G5 below,
+and the gettext-domain item also listed under **Not started**. Each is open
+because closing it costs more than it is worth, and each is named in the
+code that owns it, in the first person, as missing work rather than as a
+decision.
 
 1. **A browsed folder does not travel between Open-a-Pair's two choosers.**
    Upstream connects `current-folder-changed` on both
