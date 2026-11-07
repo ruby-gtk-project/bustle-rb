@@ -8,9 +8,9 @@
 | Ported | **23**, hand-verified 1:1 this round: `spec/regions_spec.rb` has 14 `it`s, `spec/renderer_spec.rb` has 8, `spec/pcap_loader_spec.rb` has 2 (one bijects to upstream's single test, the second is the port's own extra assertion on the same fixture, named as extra, not substituted) |
 | Gaps | **0** |
 | Extra | 1 spec example (`pcap_loader_spec.rb`'s second `it`) + the drive scripts' own 299 checks, which pin the port's own behaviour, not an upstream test |
-| Test command re-run for this audit | `nix develop --command xvfb-run -a ruby -e 'require "rspec/core"; exit RSpec::Core::Runner.run(["--format", "progress", "--require", "spec_helper", "spec"])'` → **24 examples, 0 failures** |
+| Test command re-run for this audit | `nix develop --command xvfb-run -a ruby -e 'require "rspec/core"; exit RSpec::Core::Runner.run(["--format", "progress", "--require", "spec_helper", "spec"])'` → **38 examples, 0 failures** (was 24 as of the commit this table last described; `spec/monitor_spec.rb` added 14 more with the G12 fix — see *Re-audit at `9223da6`* below) |
 | Drive command re-run for this audit | `nix develop --command xvfb-run -a ruby test/drive_all.rb` → **299 of 299 checks passed, DRIVE ALL OK**, 22 of 22 components covered by name |
-| Declared rake target | **`rake spec` now exists** (`rakelib/spec.rake`, added since the previous round) and was re-run directly as well: `rake spec` → 24 examples, 0 failures. `rake test` exists and runs the drive scripts. Closed; see *Unrun checks* for what is still not run by either target |
+| Declared rake target | **`rake spec` now exists** (`rakelib/spec.rake`, added since the previous round) and was re-run directly as well: `rake spec` → 38 examples, 0 failures. `rake test` exists and runs the drive scripts. Closed; see *Unrun checks* for what is still not run by either target |
 
 The suite has been executed, twice, independently, for this audit: once through
 `rake spec`/the raw RSpec runner, and once through `test/drive_all.rb`. Both are
@@ -42,8 +42,11 @@ bustle.cabal:205  Test-suite test-renderer     main-is: Test/Renderer.hs
 is an `Executable`, not a `Test-suite`; the file asserts nothing and its printing
 loop is commented out upstream. It is not in the count and nothing is owed for it.
 
-The port's own census finds 377 rows, of which 24 are the ported RSpec examples
-and 353 are `d.check`/`d.step` calls in the two drive scripts. The assertion unit
+The port's own census finds 377 rows, of which 24 were the ported-plus-extra
+RSpec examples as of the tree this line was written against (now 38, since
+`spec/monitor_spec.rb` added 14 more — none of them a bijection to an upstream
+test, all of them extra, see *Extra* below) and 353 are `d.check`/`d.step`
+calls in the two drive scripts. The assertion unit
 in those drivers is `check` — `test/gtk_driver.rb` increments its pass counter
 there, and `step` only groups — so the drivers' real number is the 262 and 6 the
 runs print, not the census's 353. They are extra either way.
@@ -121,6 +124,13 @@ Outside the count, and not parity work.
 - `spec/pcap_loader_spec.rb:23` — `returns warnings and a log for that file`. One
   example beyond upstream's single case, asserting that the loader returns a
   warnings array and a non-empty log rather than merely not raising.
+- `spec/monitor_spec.rb` — 14 examples added by the G12 fix (commit `9223da6`),
+  none a bijection to an upstream test: upstream has no unit test for
+  `pcap-monitor.c` at all (it is exercised only by the GUI and by
+  `test-pcap-crash` for the loader half). These close the coverage gap
+  `.reports/accountability-ensurance.md` finding A1 named — component 21 had
+  no spec coverage beyond a 3-branch `case` statement — and are extra, not
+  parity, work.
 - `test/drive_bustle.rb` — **262 checks** (241 `d.check` call sites, some inside loops) over 100 steps, with 21 screenshots,
   walking all 22 components in `.reports/component-identification.md`: every
   window, stack page, dialog, menu, action and accelerator, the empty and error
@@ -180,3 +190,15 @@ Neither scanner defect has been fixed in `.claude/skills/test-parity/scripts/`
 as of this audit. They are why every count above was taken by hand (reading
 the three upstream files and the three spec files directly) rather than by
 running the tool and trusting its output.
+
+## Re-audit at `9223da6` (2026-11-07)
+
+Re-run rather than re-read: `rake spec` and `test/drive_all.rb` under the
+fork's dev shell. Both still pass — 38 examples (not 24; see
+`.reports/accountability-ensurance.md` finding A8 for why the number this
+table carried was stale) and 299 of 299 checks, 22 of 22 components. Upstream
+parity is unaffected — 23 of 23 upstream tests still ported 1:1, 0 gaps —
+because all 14 new examples in `spec/monitor_spec.rb` are extra, port-only
+coverage of component 21 (see *Extra*, above), added to close the coverage
+gap `.reports/accountability-ensurance.md` finding A1 named, not to port an
+upstream test that did not exist.

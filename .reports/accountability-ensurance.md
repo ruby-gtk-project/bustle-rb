@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `9086e5b` (re-audited this round; `lib/`, `exe/`, `data/`, `po/` are byte-identical to the `732e6bb` state this ledger was written against) |
+| Port | `ruby` @ `9223da6` (re-audited this round; `9086e5b..9223da6` touched `lib/bustle/monitor.rb`, `spec/monitor_spec.rb`, `PORTING.md` and `.reports/component-parity.md` only — the G12 fix — so this audit re-derived findings touching those files and re-read the rest) |
 | Scanned | `lib/`, `exe/`, `.reports/`, `PORTING.md`, `FINDINGS.md`, `README.md`, `test/`, `spec/`, `.claude/skills/`, plus every prose file in the tree |
 | Tool | `accountability-ensurance/scripts/find-excuses.sh .`, plus a direct re-run of the translation/catalogue scanners and the drive/spec suite — see *Re-audit* |
-| Findings | **9** (A1–A7 carried, unchanged since nothing in `lib/`/`exe/` moved since they were written; **T1 now closed**; **T2 new this round**) |
-| False greens | **1 live** (**T2** — `PORTING.md`, committed in `ae190b4`, states as a settled fact that `catalogue.rb --compare` "now returns … 57 ported, 10 gaps, 19 port-only"; re-run for this audit, deterministically, twice, it returns 63/4/21, and PORTING.md's number does not reproduce by any means found. T1 is closed: the scanner fix `ae190b4` claims to have reapplied is genuinely back in place — `census-smoke.sh` passes, 93 rows for 91 call sites — so the specific defect T1 named (a silently reverted marker fix) is fixed. It is the number layered on top of that working fix that is the new false green) |
+| Findings | **9** (A1 **now closed this round**, by `spec/monitor_spec.rb`; A2, A4–A7 closed per the `732e6bb` re-audit below and unchanged since; A3 still open; T1 closed; T2 **now closed** — `PORTING.md` no longer cites a specific `catalogue.rb --compare` number, confirmed by re-reading it this round, not assumed from the `9223da6` commit message; **A8 new this round**) |
+| False greens | **1 live** (**A8** — new this round: four documents (`PORTING.md`, `.reports/component-parity.md`, `.reports/test-parity.md`, and this file's own *Green claims* section below) asserted "24 examples, 0 failures" as a re-run, reproduced number; `spec/monitor_spec.rb` landed in the same commit, `9223da6`, that touched `.reports/component-parity.md` for an unrelated reason (closing G12) and added 14 examples, and none of the four documents was updated. Re-running the exact command every one of them names now returns **38 examples, 0 failures**. The commit message for `9223da6` even states the new spec file's purpose correctly — it is not that nobody knew the examples existed, it is that the number already written down was never checked against them) |
 
 The rule this report enforces: no document may contain a sentence a reader could
 mistake for a decision, and the only reason any document may give for a missing
@@ -40,7 +40,19 @@ which the skill names as the most serious kind of finding there is.
 
 ---
 
-## A1 — the gate reports 22 of 22 components exercised; component 21 is exercised by three calls to a `case` statement
+## A1 — **closed this round** — the gate reports 22 of 22 components exercised; component 21 is exercised by three calls to a `case` statement
+
+Closed by two independent fixes landing between the previous round and this
+one, both re-verified directly rather than taken on the commit messages' word:
+`test/drive_all.rb` (pre-existing) genuinely sums both drive scripts' checks
+and components instead of letting `drive_bustle.rb` claim coverage it cannot
+run, closing the accounting half of this finding; and `spec/monitor_spec.rb`
+(added by `9223da6`, the G12 fix) now drives the pcap frame parser, the
+global-header dispatch, the exit-status mapping and a stubbed subprocess
+through `#start`/`#run`/`#stop` directly — the actual coverage this finding
+said was missing, not an accounting fix around its absence. Left below,
+unabridged, as the record of what was wrong and why it mattered; the fix is
+real but the original bug is worth keeping legible.
 
 `test/drive_bustle.rb:1275-1283` ends the run with
 
@@ -381,10 +393,10 @@ nothing executed — and these hold up:
   numbers from earlier rounds) — re-run for this audit, from a clean shell,
   and reproduced exactly, 22 of 22 components covered. Not a remembered
   number.
-- **"24 examples, 0 failures"** — re-run for this audit under
-  `xvfb-run -a ruby -e 'RSpec::Core::Runner.run(…)'`. The previous round's reports
-  claimed the specs passed "with a throwaway RSpec stand-in because rspec is not
-  installed"; that is no longer the case and the real runner is used.
+- **"38 examples, 0 failures"** — re-run for this audit under
+  `xvfb-run -a ruby -e 'RSpec::Core::Runner.run(…)'`. The real runner is used,
+  not a stand-in. This is the corrected number — see **A8** below for the
+  "24" every document including this one's own previous round stated instead.
 - **The name-owner seeding and the monitor's own name** (last round's gaps 1 and
   3) are the one part of the monitor that **is** verified live: the recorded log
   is read back and the `org.freedesktop.Bustle.Monitor.*` name found in it
@@ -399,6 +411,41 @@ nothing executed — and these hold up:
   marked as guesses, and no sentence that excuses a missing feature. Its
   "Environment this round was written in" section is now historical and says so
   by dating itself, which is the right way for that file to age.
+
+## A8 — a spec count went stale in four documents the moment the commit that caused it landed
+
+New this round, and the sharpest instance of the pattern this skill exists to
+catch: not a claim nobody ever checked, but a claim that was true, committed
+alongside the exact change that made it false, in the same commit.
+
+Commit `9223da6` added `spec/monitor_spec.rb` (14 new examples, closing A1
+above) and, in the same commit, edited `.reports/component-parity.md` to
+close finding G12 — but left that same file's "Specs" row reading "24
+examples, 0 failures, matching the number below exactly" unchanged. The
+number it claims to match, in `.reports/test-parity.md`, was likewise left at
+24 in three separate places, and `PORTING.md`'s own sentence ("the specs run
+with `rake spec` … : 24 examples, 0 failures") was untouched too. Re-running
+the exact command any of the four names, for this audit:
+
+```
+$ nix develop --command xvfb-run -a rake spec
+...
+38 examples, 0 failures
+```
+
+None of the four documents was lying when its sentence was last true; each
+went stale at the instant `9223da6` committed, and nothing — no test, no
+rake task, no pre-commit check — ties a prose-quoted example count to the
+suite it describes, so the drift was silent until this audit re-ran the
+command instead of reading the sentence. **Fixed in this document, in
+`PORTING.md`, `.reports/component-parity.md` and `.reports/test-parity.md`,
+by this same commit** — all four now read 38. The behaviour still owed,
+since a document is only ever caught this way by an audit that chooses to
+re-run things: a number copied from a test runner's output into prose is a
+fact with a half-life, not a constant, and the fix is to stop quoting it as
+one — `.reports/test-parity.md`'s header row and `translation-parity.md`'s
+practice of citing its own regenerated figures rather than a frozen count
+copied elsewhere are the pattern to extend, not invent.
 
 ## Rules applied
 

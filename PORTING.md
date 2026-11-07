@@ -80,7 +80,10 @@ from the command line (`bustle-pcap -v`) and through the GUI
 (`test/drive_recording.rb`: record, make traffic, stop, read the log back and
 find the monitor's own claimed name in it). The specs run with `rake spec`,
 which `rakelib/spec.rake` defines because kettle-dev is absent in this dev
-shell: 24 examples, 0 failures.
+shell: 38 examples, 0 failures (24 as of the previous audit round plus 14 new
+in `spec/monitor_spec.rb`, added with the G12 fix; see
+`.reports/accountability-ensurance.md`, finding A8, for the fact that this
+number drifted in every report that cited it until this audit round).
 
 ## Not started
 
