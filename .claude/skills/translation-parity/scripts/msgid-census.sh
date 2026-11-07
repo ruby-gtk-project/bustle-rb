@@ -33,7 +33,7 @@ sources() {
     -not -path '*/.claude/skills/*' -not -path '*/target/*' \
     \( -name '*.vala' -o -name '*.c' -o -name '*.cpp' -o -name '*.h' \
        -o -name '*.py' -o -name '*.js' -o -name '*.ts' -o -name '*.rs' \
-       -o -name '*.rb' -o -name '*.hs' -o -name '*.blp' -o -name '*.ui' -o -name '*.xml' \
+       -o -name '*.rb' -o -name '*.blp' -o -name '*.ui' -o -name '*.xml' \
        -o -name '*.xml.in' -o -name '*.xml.in.in' \
        -o -name '*.desktop.in' -o -name '*.desktop.in.in' -o -name '*.desktop' \
        -o -name '*.ui.in' \
@@ -61,18 +61,6 @@ markers_awk() {
       DQ = "^[[:space:]]*\"([^\"\\\\]|\\\\.)*\""
       SQ = "^[[:space:]]*" Q "([^" Q "\\\\]|\\\\.)*" Q
       LOOKAHEAD = 6
-
-      # Haskell has one marker, hgettext'"'"'s `__`, applied to a bare literal.
-      # Its own `_` is the wildcard pattern, which appears as `_(MessageEvent
-      # msg)` all over a case expression, so the general marker set would
-      # report every pattern match as an unresolved message.
-      BOUNDARY = "(^|[^A-Za-z0-9_.])"
-      OPENER = "[[:space:]]*[(\"]"
-      if (LANG_KIND == "haskell") {
-        MARKERS = BOUNDARY "(__)" OPENER
-      } else {
-        MARKERS = BOUNDARY "([A-Z][A-Za-z0-9_]*\\.)?(g_)?(__|_|N_|NC_|C_|n_|Nn_|np_|p_|s_|ngettext|gettext|dgettext|dngettext|dpgettext|dpgettext2|pgettext|npgettext)" OPENER
-      }
     }
 
     # Take the leading string literal of s, in either quote style, absorbing
@@ -130,21 +118,12 @@ markers_awk() {
         }
 
         pos = 1
-        while (match(substr(buf, pos), MARKERS)) {
+        while (match(substr(buf, pos), /(^|[^A-Za-z0-9_.])(g_)?(_|N_|NC_|C_|n_|Nn_|np_|p_|s_|ngettext|gettext|dgettext|dngettext|dpgettext|dpgettext2|pgettext|npgettext)[[:space:]]*\(/)) {
           start = pos + RSTART - 1
           if (start > own) break          # this match belongs to a later line
           m = substr(buf, start, RLENGTH)
-          # Haskell writes the marker applied to a bare literal - `__ "Bustle"`
-          # - so the opener is a quote, not a parenthesis, and the literal
-          # starts where the match ends rather than after it.
-          opener = substr(m, length(m), 1)
-          sub(/^[^A-Za-z_]/, "", m)
-          # A qualified receiver: the port writes `Bustle._("...")`, and the
-          # marker is the method, not the module.
-          sub(/^[A-Za-z0-9_]+\./, "", m)
-          sub(/[[:space:]]*[("]$/, "", m)
+          sub(/^[^A-Za-z_]/, "", m); sub(/[[:space:]]*\($/, "", m)
           pos = start + RLENGTH
-          if (opener == "\"") pos = pos - 1
           rest = substr(buf, pos)
 
           # Domain-first forms: the first argument names the text domain and
@@ -282,8 +261,6 @@ for tree in "$@"; do
       # be read by the same rules.
       #
       #   _(  N_(  gettext(                     -> single
-      #   Bustle._(  Foo.N_(                    -> single, qualified receiver
-      #   __ "..."                              -> single, Haskell, no parens
       #   C_(  NC_(  pgettext(  p_(  np_(       -> single, with context
       #   ngettext(  n_(  Nn_(                  -> plural, key is the singular
       #   dgettext(  g_dngettext(  dpgettext2(  -> domain first, then the rest
@@ -293,9 +270,6 @@ for tree in "$@"; do
       # directive* in C, so treating it as a comment everywhere loses
       # `#define URI_FAILED_MESSAGE C_("toast-message", "Couldn't Open Link")`.
       *.rb|*.py) markers_awk "$f" "$rel" hash ;;
-      # Haskell's line comment is `--`, which the slash dialect already reads;
-      # its marker is hgettext's `__`, which has no parentheses.
-      *.hs) markers_awk "$f" "$rel" haskell ;;
       *.vala|*.c|*.cpp|*.h|*.js|*.ts|*.rs|*.blp) markers_awk "$f" "$rel" slash ;;
     esac
   done
