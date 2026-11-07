@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`) |
+| Port | `ruby` @ `9086e5b` (re-audited this round; `lib/`, `exe/`, `data/`, `po/` are byte-identical to the `732e6bb` state the body below was written against — `git diff 732e6bb..9086e5b -- lib exe data po` is empty). **The header figures below (65 ported, 0 open gaps) are the hand count and still hold. `PORTING.md`'s separate claim that `catalogue.rb --compare` now confirms "57 ported, 10 gaps, 19 port-only" does NOT reproduce — see *Re-audit at `9086e5b`* at the end of this file, the most serious finding of this round** |
 | Domain | **none** — the port reads `po/*.po` at runtime instead of binding a gettext domain. See *Delivery* |
 | Upstream messages | **66** (distinct msgids in `po/messages.pot`, header excluded; hand-parsed this round — see *Re-audit*) |
 | Ported | **65**, hand-verified by a full key diff this round |
@@ -346,8 +346,94 @@ now-unreproducible automated run claimed — which is reassuring but is not
 itself proof; it means the hand count and the dead tool agree, not that the
 tool works.
 
-The scanner fix has not been reapplied in this commit. Reapplying it inside
-`.claude/skills/` would itself be reverted by the next scaffold sync unless
-the sync process is told to preserve local script fixes, which is outside
-this audit's scope to arrange — named here so it is not silently redone and
-silently re-lost a third time.
+**Stale as of commit `ae190b4`:** the sentence above ("the scanner fix has not
+been reapplied in this commit") was true when this section was written and is
+false now — `ae190b4` reapplied the fix verbatim and added
+`census-smoke.sh` to guard it. Left here, unedited, this paragraph would sit
+one screen below a header that says "fixed again" and tell a reader the
+opposite; that self-contradiction inside one file is itself a finding, carried
+to `.reports/accountability-ensurance.md` as **T2** this round. The fix being
+back in place does not, on its own, make `catalogue.rb --compare`'s *numbers*
+trustworthy — see *Re-audit at `9086e5b`* below, which re-runs the now-fixed
+scanner and finds its output still does not match what `PORTING.md` claims for
+it.
+
+## Re-audit at `9086e5b` (this round): the "fixed" scanner's number still does not reproduce
+
+`census-smoke.sh` passes (93 rows for 91 real `Bustle._(...)` call sites,
+re-run directly for this audit), so the qualified-receiver/Haskell-marker fix
+itself is in place and working, confirming `ae190b4`'s claim about the fix.
+**But `PORTING.md` makes a second, separate claim — that running
+`catalogue.rb --compare` over `origin/master` and this branch "now" reports
+"57 ported, 10 gaps, 19 port-only" — and that claim does not reproduce.**
+
+Re-run for this audit, from a clean worktree of `origin/master` @ `0a8cf38`
+against this tree's working copy (sha `9086e5b`), twice, deterministically:
+
+```
+$ ruby .claude/skills/translation-parity/scripts/catalogue.rb <upstream-worktree> --role upstream > up.yaml
+$ ruby .claude/skills/translation-parity/scripts/catalogue.rb .                   --role port     > port.yaml
+$ ruby .claude/skills/translation-parity/scripts/catalogue.rb --compare up.yaml port.yaml
+summary:
+  ported: 63
+  gaps: 4
+  extra: 21
+```
+
+**63 ported, 4 gaps, 21 extra — not 57/10/19.** This is not the stale,
+scanner-blind number either (that one was 0, per T1): it is a third, different
+number, produced by the scanner `PORTING.md` says is fixed, run against the
+exact tree state `PORTING.md` says it was run against (`git diff
+732e6bb..9086e5b -- lib exe data po` is empty, so nothing in the compared
+trees could have moved between when `ae190b4` allegedly ran this and now).
+Nobody committed the generated YAML to check against, so there is nothing to
+diff the discrepancy against beyond re-running the tool, which is what this
+section does.
+
+Reading the 4 reported "gaps" by hand resolves them, and they are not real
+content gaps:
+
+| Upstream (reported "gap") | Port (reported "extra", same message) |
+|---|---|
+| `&lt;big&gt;&lt;b&gt;Waiting for D-Bus traffic; please hold…&lt;/b&gt;&lt;/big&gt;` | `<big><b>Waiting for D-Bus traffic; please hold…</b></big>` |
+| `Start recording D-Bus activity with the &lt;b&gt;Record&lt;/b&gt; button above …` | `Start recording D-Bus activity with the <b>Record</b> button above\n You can a…` |
+| `Unticking a service hides its column in the diagram,          \and all message…` | `Unticking a service hides its column in the diagram, and all messages it is inv…` |
+| `You might want to manually recover the log from the temporary file at    …` | `You might want to manually recover the log from the temporary file at "%s".` |
+
+Each "gap" and its paired "extra" are the same string: the left column is
+upstream's raw GtkBuilder/Haskell literal with HTML entities (`&lt;`/`&gt;`)
+left un-decoded and, for the multi-line ones, the source's literal
+line-continuation whitespace (`          \`) left uncollapsed; the right
+column is the port's normalized text. `catalogue.rb`/`msgid-census.sh` key
+messages by exact string equality with no entity-decoding and no whitespace
+normalization for multi-line builder/Haskell literals, so the same message
+sorts into two different keys and shows up once as a "gap" and once as
+"extra". **All four are false gaps** — the content is ported in every case —
+and this is a defect in the skill's scripts, not in this port.
+
+There is also a real parsing bug, distinct from the whitespace issue, that
+produced one of the 21 "extra" rows:
+
+```
+id: ').first].compact.reject(&:empty?).uniq         end          def po_path(name)           File.join(PO_DIR, '
+state: extra
+port_sites: ['lib/bustle/translation.rb:58']
+```
+
+`msgid-census.sh` matched some marker-like substring inside
+`lib/bustle/translation.rb`'s `candidates`/`po_path` methods (ordinary Ruby,
+no `_(...)` call site) and extracted a multi-line chunk of source code as if
+it were a translatable string literal. This is not a translation gap either —
+it is the scanner inventing a 76th call site that does not exist, on top of
+the real 76. Both defects (whitespace/entity non-normalization and this
+false-positive extraction) belong in the skill's scripts.
+
+**Conclusion:** the true automated gap count, once the four false "gaps" are
+read as ported and the one garbage "extra" is discounted, is **0 real
+gaps** — which agrees with this file's header, taken by hand. But that means
+`PORTING.md`'s specific sentence — that `catalogue.rb --compare` itself "now
+returns … 57 ported, 10 gaps, 19 port-only"" — is a number nobody can
+currently reproduce, stated as settled fact immediately after fixing the exact
+same kind of unreproducible-claim defect (T1) one paragraph earlier in the
+same commit. That is the pattern the `accountability-ensurance` skill calls
+the most serious finding there is, and it is carried there as **T2**.

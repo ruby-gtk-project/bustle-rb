@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` (Haskell + GTK3, widget trees in GtkBuilder XML) |
-| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`, and `.reports/component-inventory.md` was separately refreshed at `42422c4`) |
+| Port | `ruby` @ `9086e5b` (re-audited this round; `lib/`, `exe/`, `data/`, `po/` are byte-identical to the `732e6bb` state this ledger was last written against — `git diff 732e6bb..9086e5b -- lib exe data po` is empty — so the widget/CSS/signal findings below were re-read against the current tree rather than rewritten, and none of them moved) |
 | Method | `component-identification` skill, Steps 1–5 |
 | Scans | `component-scan.sh` run on both trees in the fork's dev shell |
 | Symbol table | **not built** — `gir-symbols.sh` was not run, so every namespaced match stayed `widget` and the strikes below were made by reading |

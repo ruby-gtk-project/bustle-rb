@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`) |
+| Port | `ruby` @ `9086e5b` (re-audited this round; `lib/`, `exe/`, `data/`, `po/` are byte-identical to the `732e6bb` state below — `git diff 732e6bb..9086e5b -- lib exe data po` is empty) |
 | Units with parity | **20 / 22** |
-| Gaps | **2** (G5, G12 below). G1–G4, G6–G11 from the previous round are re-verified closed, by reading the code the "Drive all 22 components" commit changed, not by trusting its commit message |
-| Runtime gate | re-run for this audit: `test/drive_all.rb` → **299 of 299 checks passed, DRIVE ALL OK**, 22 of 22 components covered (21 via `drive_bustle.rb`, component 21 — the live bus monitor — via `drive_recording.rb`) |
-| Specs | re-run for this audit: 24 examples, 0 failures. `rubocop lib exe test spec rakelib` re-run for this audit: 48 files, no offenses |
+| Gaps | **2** (G5, G12 below). As of `PORTING.md` (commit `ae190b4`), G5 is now accepted **permanently** — not reopened a third audit running — because closing it needs a hand-built `GtkFileChooserWidget` replacement for `Gtk::FileDialog`, a different, larger component than a signal hookup. G12 is still open and re-verified below. G1–G4, G6–G11 from the previous round remain closed; nothing in `lib/`/`exe/` has changed since they were verified, so they were not re-derived from scratch this round |
+| Runtime gate | re-run for this audit, from a clean shell: `test/drive_all.rb` → **299 of 299 checks passed, DRIVE ALL OK**, 22 of 22 components covered (21 via `drive_bustle.rb`, component 21 — the live bus monitor — via `drive_recording.rb`). Exact match to the number below |
+| Specs | re-run for this audit: 24 examples, 0 failures, matching the number below exactly |
 | Step 4 (styling renders) | yes for all 22; same basis as the previous round (the three Ruby stylesheets load, drive asserts the error bar's colour and filter banding, welcome-page greyscale checked against the running app in this round's drive, not only against upstream's `.ui`) |
 | Step 5 (behaviour fires) | yes for all 22; the 299-check gate now includes component 21, which the previous round's 262-check gate did not |
 

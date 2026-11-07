@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`) |
+| Port | `ruby` @ `9086e5b` (re-audited this round; `spec/`, `lib/`, `exe/` are byte-identical to the `732e6bb` state below — `git diff 732e6bb..9086e5b -- spec lib exe` is empty — so the suite was re-run, not re-read) |
 | Upstream tests | **23** (14 `prop_*` in `Test/Regions.hs`, 8 `testCase` in `Test/Renderer.hs`, 1 bare-`main` regression test in `Test/PcapCrash.hs`; hand-counted this round, since the scanner still cannot see Haskell — see *Scanner defects*) |
 | Ported | **23**, hand-verified 1:1 this round: `spec/regions_spec.rb` has 14 `it`s, `spec/renderer_spec.rb` has 8, `spec/pcap_loader_spec.rb` has 2 (one bijects to upstream's single test, the second is the port's own extra assertion on the same fixture, named as extra, not substituted) |
 | Gaps | **0** |

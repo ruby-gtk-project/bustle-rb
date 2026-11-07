@@ -3,11 +3,11 @@
 | | |
 |---|---|
 | Upstream | `origin/master` @ `0a8cf38` |
-| Port | `ruby` @ `732e6bb` (re-audited; previous ledger below was written for `6e6fccb`) |
+| Port | `ruby` @ `9086e5b` (re-audited this round; `lib/`, `exe/`, `data/`, `po/` are byte-identical to the `732e6bb` state this ledger was written against) |
 | Scanned | `lib/`, `exe/`, `.reports/`, `PORTING.md`, `FINDINGS.md`, `README.md`, `test/`, `spec/`, `.claude/skills/`, plus every prose file in the tree |
-| Tool | `accountability-ensurance/scripts/find-excuses.sh .`, plus a direct re-run of the translation scanner and the drive/spec suite — see *Re-audit* |
-| Findings | **8** (A1–A7 carried and re-verified below; **T1 new this round**) |
-| False greens | **1 live** (T1 — a committed, unreproducible "63 ported, 4 gaps" claim). A1/A2 from the previous round are closed: the claims they flagged were re-run for real this round (see *Green claims audited*) |
+| Tool | `accountability-ensurance/scripts/find-excuses.sh .`, plus a direct re-run of the translation/catalogue scanners and the drive/spec suite — see *Re-audit* |
+| Findings | **9** (A1–A7 carried, unchanged since nothing in `lib/`/`exe/` moved since they were written; **T1 now closed**; **T2 new this round**) |
+| False greens | **1 live** (**T2** — `PORTING.md`, committed in `ae190b4`, states as a settled fact that `catalogue.rb --compare` "now returns … 57 ported, 10 gaps, 19 port-only"; re-run for this audit, deterministically, twice, it returns 63/4/21, and PORTING.md's number does not reproduce by any means found. T1 is closed: the scanner fix `ae190b4` claims to have reapplied is genuinely back in place — `census-smoke.sh` passes, 93 rows for 91 call sites — so the specific defect T1 named (a silently reverted marker fix) is fixed. It is the number layered on top of that working fix that is the new false green) |
 
 The rule this report enforces: no document may contain a sentence a reader could
 mistake for a decision, and the only reason any document may give for a missing
@@ -320,13 +320,67 @@ say that; it still presents the number as this round's own verified fact,
 which makes `PORTING.md` itself the carrier of a false green until it is
 corrected.
 
+## T2 — the commit that fixed T1 immediately produced a second unreproducible number, in the same paragraph
+
+This round re-ran everything T1 and the `ae190b4` commit message claim, rather
+than trusting either. The fix itself checks out: `census-smoke.sh` (added by
+`ae190b4`) passes — `bash .claude/skills/translation-parity/scripts/msgid-census.sh
+lib exe` returns 93 rows against 91 real `Bustle._(...)` call sites, re-run
+directly for this audit. T1 is genuinely closed.
+
+But `PORTING.md`'s "Open gaps" section, in the paragraph immediately after
+describing that fix, states: `catalogue.rb --compare` over `origin/master` and
+this branch "now" reports "57 ported, 10 gaps, 19 port-only — different from
+the earlier '63 ported, 4 gaps, 21 port-only' ... because the trees have moved
+since, not because the scanner is still broken." **Re-run for this audit,
+twice, deterministically, with the exact fixed scanner and the exact tree
+state the sentence describes** (`git diff 732e6bb..9086e5b -- lib exe data po`
+is empty, so nothing could have "moved since" between when that sentence was
+written and now):
+
+```
+$ ruby .claude/skills/translation-parity/scripts/catalogue.rb <upstream-worktree> --role upstream > up.yaml
+$ ruby .claude/skills/translation-parity/scripts/catalogue.rb . --role port > port.yaml
+$ ruby .claude/skills/translation-parity/scripts/catalogue.rb --compare up.yaml port.yaml
+summary: {ported: 63, gaps: 4, extra: 21}
+```
+
+63/4/21 — the number `PORTING.md` itself calls stale and superseded, not
+57/10/19. Full detail, including a hand-check of all four reported "gaps"
+(they are false gaps — entity/whitespace artifacts in the scanner's extraction
+of multi-line GtkBuilder and Haskell literals, each one's content already
+present on the port side under a differently-escaped key) and a distinct
+scanner bug that invented a 76th call site out of ordinary Ruby source
+(`lib/bustle/translation.rb:58`), is in `.reports/translation-parity.md`,
+*Re-audit at `9086e5b`*.
+
+**Why this is T2 and not just "T1 again":** T1 was a tool silently going
+blind — 0 rows, an obviously broken state nobody noticed for nine commits.
+T2 is worse in one respect: the tool is *not* broken (93 rows is correct), it
+produces a clean, specific, plausible-looking number, and that number is
+simply not what running the tool produces. Nothing about 57/10/19 looks wrong
+on its face, which is exactly why a reader — or the next audit, if this one
+had not re-run it — would have no reason to doubt it. A number that looks
+right and is not is a more dangerous false green than a number that is
+visibly absent.
+
+**Behaviour owed:** `PORTING.md` should state the number this file actually
+reproduces (63 ported, 4 gaps — understood to be 4 false gaps, 0 real — per
+`.reports/translation-parity.md`) or stop citing a specific `catalogue.rb`
+output at all and rely on the hand count the translation-parity report already
+carries as its header figure. It should not state a number that running the
+named command, against the named tree state, does not produce.
+
 ## Green claims audited, and found sound
 
 Checked specifically for the pattern in A1 and A2 — a report asserting something
 nothing executed — and these hold up:
 
-- **"262 of 262 checks passed, DRIVE OK"** — re-run for this audit, from a clean
-  shell, and reproduced exactly. Not a remembered number.
+- **"299 of 299 checks passed, DRIVE ALL OK"** (`test/drive_all.rb`, the
+  current gate; superseded `drive_bustle.rb`'s standalone 262/290-check
+  numbers from earlier rounds) — re-run for this audit, from a clean shell,
+  and reproduced exactly, 22 of 22 components covered. Not a remembered
+  number.
 - **"24 examples, 0 failures"** — re-run for this audit under
   `xvfb-run -a ruby -e 'RSpec::Core::Runner.run(…)'`. The previous round's reports
   claimed the specs passed "with a throwaway RSpec stand-in because rspec is not
