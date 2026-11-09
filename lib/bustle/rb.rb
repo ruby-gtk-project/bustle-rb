@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-require_relative "rb/version"
 require_relative "../bustle"
+require_relative "rb/version"
 
 module Bustle
   # The gem's namespace, as the gemspec and `require "bustle/rb"` name it.
